@@ -120,13 +120,9 @@ func processSymbol(symbol string, cfg Config) {
 	value := rsi.Calc(closes, cfg.RSIPeriod)
 	log.Printf("%s RSI=%.2f", symbol, value)
 
-	if value == 0 {
-		return
-	}
-
 	if value >= cfg.Overbought {
 		notifier.SendSignal(symbol, "SHORT", value)
-	} else if value < cfg.Oversold {
+	} else if value <= cfg.Oversold {
 		notifier.SendSignal(symbol, "LONG", value)
 	} else {
 		notifier.ClearSignal(symbol)
