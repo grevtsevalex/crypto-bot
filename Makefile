@@ -8,7 +8,7 @@ build:
 	go build -o $(BINARY) .
 
 # Запустить бота в фоне
-run:
+run: build
 	nohup ./$(BINARY) > bot.log 2>&1 &
 	echo "Бот запущен. PID: $$!"
 
