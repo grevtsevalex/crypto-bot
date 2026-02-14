@@ -157,7 +157,7 @@ func processSymbol(symbol string) {
 
 	rsi := RSI(closes, rsiPeriod)
 
-	// fmt.Printf("%s RSI=%.2f\n", symbol, rsi)
+	fmt.Printf("%s RSI=%.2f\n", symbol, rsi)
 
 	if rsi == 0 {
 		return
