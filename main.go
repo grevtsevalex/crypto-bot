@@ -105,8 +105,8 @@ func main() {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		log.Println("Анализ завершён. Следующий запуск через 15 минут...")
-		time.Sleep(15 * time.Minute)
+		log.Println("Анализ завершён. Следующий запуск через 1 минуту...")
+		time.Sleep(1 * time.Minute)
 	}
 }
 
