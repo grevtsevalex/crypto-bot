@@ -16,41 +16,37 @@ const (
 	bybitKlineURL          = "https://api.bybit.com/v5/market/kline"
 )
 
-// TradingPairs возвращает список символов USDT-пар в статусе TRADING с Binance.
-func TradingPairs() ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+// DerivativePairs получить деривативы
+func DerivativePairs() ([]string, error) {
+    url := "https://api.bybit.com/v5/market/instruments-info?category=linear"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, binanceExchangeInfoURL, nil)
-	if err != nil {
-		return nil, err
-	}
+    resp, err := http.Get(url)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+    var data struct {
+        Result struct {
+            List []struct {
+                Symbol string `json:"symbol"`
+                Status string `json:"status"`
+            } `json:"list"`
+        } `json:"result"`
+    }
 
-	var data struct {
-		Symbols []struct {
-			Symbol     string `json:"symbol"`
-			Status     string `json:"status"`
-			QuoteAsset string `json:"quoteAsset"`
-		} `json:"symbols"`
-	}
+    if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+        return nil, err
+    }
 
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, err
-	}
+    var result []string
+    for _, s := range data.Result.List {
+        if s.Status == "Trading" {
+            result = append(result, s.Symbol)
+        }
+    }
 
-	var result []string
-	for _, s := range data.Symbols {
-		if s.Status == "TRADING" && s.QuoteAsset == "USDT" {
-			result = append(result, s.Symbol)
-		}
-	}
-	return result, nil
+    return result, nil
 }
 
 // Candles запрашивает свечи с Bybit (linear) и возвращает цены закрытия в хронологическом порядке (старые → новые).

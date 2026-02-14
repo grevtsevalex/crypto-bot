@@ -92,7 +92,7 @@ func main() {
 	for {
 		log.Println("Запуск анализа рынка...")
 
-		symbols, err := exchange.TradingPairs()
+		symbols, err := exchange.DerivativePairs()
 		if err != nil {
 			log.Printf("Ошибка получения пар: %v", err)
 			time.Sleep(1 * time.Minute)
