@@ -1,6 +1,7 @@
+// Package rsi содержит расчёт индикатора RSI (Relative Strength Index) по ценам закрытия свечей.
 package rsi
 
-// Calc считает RSI по ценам закрытия и периоду.
+// Calc считает RSI по срезу цен закрытия и заданному периоду (обычно 14).
 // Возвращает 0, если данных недостаточно (меньше period+1 свечей).
 func Calc(closes []float64, period int) float64 {
 	if len(closes) < period+1 {

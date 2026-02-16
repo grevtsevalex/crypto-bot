@@ -1,4 +1,4 @@
-// Package exchange содержит обращение к API бирж: список торговых пар и свечи (цены закрытия).
+// Package exchange содержит обращение к API бирж: список торговых пар (Bybit linear) и свечи (цены закрытия) для расчёта RSI.
 package exchange
 
 import (
@@ -16,7 +16,7 @@ const (
 	bybitKlineURL          = "https://api.bybit.com/v5/market/kline"
 )
 
-// DerivativePairs получить деривативы
+// DerivativePairs возвращает список символов линейных деривативов Bybit (category=linear) в статусе Trading.
 func DerivativePairs() ([]string, error) {
     url := "https://api.bybit.com/v5/market/instruments-info?category=linear"
 
@@ -50,7 +50,7 @@ func DerivativePairs() ([]string, error) {
 }
 
 // Candles запрашивает свечи с Bybit (linear) и возвращает цены закрытия в хронологическом порядке (старые → новые).
-// timeframe — интервал в минутах: "1", "5", "15", "60" и т.д.
+// symbol — тикер, например BTCUSDT; timeframe — интервал: "5", "15", "60", "240" и т.д.; limit — число свечей.
 func Candles(symbol, timeframe string, limit int) ([]float64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -1,9 +1,9 @@
 {
-  "timeframe": "15",
-  "limit": 100,
+  "timeframe": "30",
+  "limit": 200,
   "rsi_period": 21,
   "overbought": 90,
-  "oversold": 30,
+  "oversold": 0,
   "telegram_token": "8296325515:AAEG-u5Ks-MlJOFMEWzG9dPzDKC1FrTDZpI",
   "subscribers_file": "subscribers.json"
 }

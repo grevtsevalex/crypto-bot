@@ -1,3 +1,5 @@
+// Package notify отвечает за рассылку уведомлений подписчикам Telegram-бота.
+// Хранит состояние последнего сигнала по каждому символу (анти-спам: не слать один и тот же тип повторно).
 package notify
 
 import (
@@ -8,15 +10,15 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Notifier хранит состояние последних сигналов (анти-спам) и рассылает уведомления
+// Notifier хранит состояние последних сигналов по символу (анти-спам) и рассылает сообщения подписчикам.
 type Notifier struct {
 	bot        *tgbotapi.BotAPI
-	lastSignal map[string]string
+	lastSignal map[string]string // symbol -> "SHORT"|"LONG", чтобы не слать один и тот же сигнал повторно
 	mu         sync.RWMutex
-	getSubs    func() map[int64]bool
+	getSubs    func() map[int64]bool // вызывается при каждой рассылке для актуального списка
 }
 
-// New создаёт Notifier. getSubs вызывается при каждой рассылке для актуального списка подписчиков
+// New создаёт Notifier. getSubs вызывается при каждой рассылке, чтобы брать актуальный список подписчиков.
 func New(bot *tgbotapi.BotAPI, getSubs func() map[int64]bool) *Notifier {
 	return &Notifier{
 		bot:        bot,
@@ -25,7 +27,7 @@ func New(bot *tgbotapi.BotAPI, getSubs func() map[int64]bool) *Notifier {
 	}
 }
 
-// ShouldSend возвращает true, если сигнал ещё не отправлялся (или изменился тип), и запоминает его
+// ShouldSend возвращает true, если для этого символа ещё не отправлялся такой тип сигнала (или тип изменился), и запоминает его.
 func (n *Notifier) ShouldSend(symbol, signalType string) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -36,7 +38,7 @@ func (n *Notifier) ShouldSend(symbol, signalType string) bool {
 	return true
 }
 
-// ClearSignal сбрасывает последний сигнал по символу (например при выходе из зоны)
+// ClearSignal сбрасывает последний отправленный сигнал по символу (вызывается, когда RSI вернулся в нейтральную зону).
 func (n *Notifier) ClearSignal(symbol string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -44,11 +46,14 @@ func (n *Notifier) ClearSignal(symbol string) {
 }
 
 // SendSignal отправляет уведомление подписчикам, если анти-спам разрешает.
+// timeframe и limit показываются в сообщении (таймфрейм в минутах, число свечей).
 // SHORT и LONG оформлены по-разному для быстрого визуального отличия.
-func (n *Notifier) SendSignal(symbol, signalType string, rsi float64) {
+func (n *Notifier) SendSignal(symbol, signalType string, rsi float64, timeframe string, limit int) {
 	if !n.ShouldSend(symbol, signalType) {
 		return
 	}
+
+	paramsLine := fmt.Sprintf("Таймфрейм: %s мин, свечей: %d", timeframe, limit)
 
 	var message string
 	switch signalType {
@@ -56,18 +61,20 @@ func (n *Notifier) SendSignal(symbol, signalType string, rsi float64) {
 		message = fmt.Sprintf(
 			"🔴 📉 *SHORT* — перекупленность\n\n"+
 				"Symbol: `%s`\n"+
-				"RSI: *%.2f*",
-			symbol, rsi,
+				"RSI: *%.2f*\n"+
+				"%s",
+			symbol, rsi, paramsLine,
 		)
 	case "LONG":
 		message = fmt.Sprintf(
 			"🟢 📈 *LONG* — перепроданность\n\n"+
 				"Symbol: `%s`\n"+
-				"RSI: *%.2f*",
-			symbol, rsi,
+				"RSI: *%.2f*\n"+
+				"%s",
+			symbol, rsi, paramsLine,
 		)
 	default:
-		message = fmt.Sprintf("🚨 %s SIGNAL\nSymbol: %s\nRSI: %.2f", signalType, symbol, rsi)
+		message = fmt.Sprintf("🚨 %s SIGNAL\nSymbol: %s\nRSI: %.2f\n%s", signalType, symbol, rsi, paramsLine)
 	}
 
 	n.BroadcastMarkdown(message)
@@ -78,7 +85,7 @@ func (n *Notifier) Broadcast(message string) {
 	n.broadcast(message, "")
 }
 
-// broadcast отправляет сообщение подписчикам; parseMode — "Markdown" или "HTML", пустой — без разметки.
+// broadcast отправляет одно сообщение всем подписчикам. parseMode — "Markdown" или "HTML", пустая строка — обычный текст.
 func (n *Notifier) broadcast(message, parseMode string) {
 	subs := n.getSubs()
 	for chatID := range subs {

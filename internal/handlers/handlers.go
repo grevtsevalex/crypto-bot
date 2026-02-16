@@ -1,7 +1,6 @@
-// Package main: обработка событий от пользователя в интерфейсе Telegram-бота
-// (команды, нажатия inline-кнопок, отображение меню и настроек).
-
-package main
+// Package handlers содержит обработку событий от пользователя в интерфейсе Telegram-бота:
+// команды, нажатия inline-кнопок, отображение меню и настроек.
+package handlers
 
 import (
 	"fmt"
@@ -9,19 +8,47 @@ import (
 	"strconv"
 	"strings"
 
+	"grevtsevalex/crypto-bot/internal/config"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// handleUpdates запускает цикл приёма апдейтов от Telegram и передаёт их в обработчики команд и callback'ов.
-// Вызывается из main в отдельной горутине.
-func handleUpdates() {
+// Handler обрабатывает апдейты бота; зависимости передаются через New.
+type Handler struct {
+	bot            *tgbotapi.BotAPI
+	getSubscribers func() map[int64]bool
+	subscribe      func(chatID int64)
+	unsubscribe    func(chatID int64)
+	requestRestart func() // вызов перезапускает цикл анализа RSI (при смене таймфрейма/свечей)
+}
+
+// New создаёт Handler с переданными зависимостями.
+// requestRestart вызывается при изменении таймфрейма или числа свечей, чтобы цикл расчёта RSI начался заново.
+func New(
+	bot *tgbotapi.BotAPI,
+	getSubscribers func() map[int64]bool,
+	subscribe, unsubscribe func(chatID int64),
+	requestRestart func(),
+) *Handler {
+	return &Handler{
+		bot:            bot,
+		getSubscribers: getSubscribers,
+		subscribe:      subscribe,
+		unsubscribe:    unsubscribe,
+		requestRestart: requestRestart,
+	}
+}
+
+// HandleUpdates запускает цикл приёма апдейтов от Telegram и передаёт их в обработчики команд и callback'ов.
+// Рекомендуется вызывать в отдельной горутине.
+func (h *Handler) HandleUpdates() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
-	updates := bot.GetUpdatesChan(u)
+	updates := h.bot.GetUpdatesChan(u)
 
 	for update := range updates {
 		if update.CallbackQuery != nil {
-			handleCallback(update.CallbackQuery)
+			h.handleCallback(update.CallbackQuery)
 			continue
 		}
 
@@ -34,22 +61,22 @@ func handleUpdates() {
 		if update.Message.IsCommand() {
 			switch update.Message.Command() {
 			case "start":
-				showMainMenu(chatID)
+				h.showMainMenu(chatID)
 			case "stop":
-				unsubscribeUser(chatID)
+				h.unsubscribeUser(chatID)
 			case "status":
-				checkSubscriptionStatus(chatID)
+				h.checkSubscriptionStatus(chatID)
 			case "help":
-				showHelp(chatID)
+				h.showHelp(chatID)
 			case "settings":
-				showSettings(chatID)
+				h.showSettings(chatID)
 			}
 		}
 	}
 }
 
-// showMainMenu отправляет главное меню с кнопками: подписаться, отписаться, статус, настройки.
-func showMainMenu(chatID int64) {
+// showMainMenu отправляет главное меню: подписаться, отписаться, статус, настройки.
+func (h *Handler) showMainMenu(chatID int64) {
 	inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Подписаться", "subscribe"),
@@ -65,14 +92,14 @@ func showMainMenu(chatID int64) {
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = inlineKeyboard
 
-	if _, err := bot.Send(msg); err != nil {
+	if _, err := h.bot.Send(msg); err != nil {
 		log.Printf("Ошибка отправки меню %d: %v", chatID, err)
 	}
 }
 
-// showSettings отправляет текущие настройки (таймфрейм, свечи, период RSI, пороги) и кнопки для их изменения.
-func showSettings(chatID int64) {
-	cfg := GetConfig()
+// showSettings отправляет текущие настройки и кнопки для изменения (таймфрейм, свечи, RSI, пороги).
+func (h *Handler) showSettings(chatID int64) {
+	cfg := config.Get()
 	text := fmt.Sprintf(
 		"⚙️ *Текущие настройки*\n\n"+
 			"Таймфрейм: *%s* мин\n"+
@@ -101,11 +128,11 @@ func showSettings(chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = kb
-	bot.Send(msg)
+	h.bot.Send(msg)
 }
 
-// handleCallback обрабатывает нажатия inline-кнопок: подписка, отписка, статус, настройки и применение значения настроек.
-func handleCallback(query *tgbotapi.CallbackQuery) {
+// handleCallback обрабатывает нажатие inline-кнопки: подписка, отписка, статус, настройки или применение значения настройки.
+func (h *Handler) handleCallback(query *tgbotapi.CallbackQuery) {
 	chatID := query.Message.Chat.ID
 	data := query.Data
 
@@ -114,47 +141,33 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 
 	switch data {
 	case "main_menu":
-		showMainMenu(chatID)
-		callback := tgbotapi.NewCallback(query.ID, "")
-		bot.Request(callback)
+		h.showMainMenu(chatID)
+		h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 		return
 
 	case "settings":
-		showSettings(chatID)
-		callback := tgbotapi.NewCallback(query.ID, "")
-		bot.Request(callback)
+		h.showSettings(chatID)
+		h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 		return
 
 	case "subscribe":
-		subscribersMu.RLock()
-		_, exists := subscribers[chatID]
-		subscribersMu.RUnlock()
-
-		if exists {
+		subs := h.getSubscribers()
+		if _, exists := subs[chatID]; exists {
 			responseText = "⚠️ Вы уже подписаны на сигналы!"
 		} else {
-			subscribersMu.Lock()
-			subscribers[chatID] = true
-			subscribersMu.Unlock()
-			saveSubscribers()
+			h.subscribe(chatID)
 			responseText = "✅ Вы успешно подписались на сигналы!"
 		}
 		showKeyboard = true
 
 	case "unsubscribe":
-		subscribersMu.Lock()
-		delete(subscribers, chatID)
-		subscribersMu.Unlock()
-		saveSubscribers()
+		h.unsubscribe(chatID)
 		responseText = "❌ Вы отписались от сигналов. Чтобы вернуться, нажмите /start"
 		showKeyboard = false
 
 	case "status":
-		subscribersMu.RLock()
-		_, exists := subscribers[chatID]
-		subscribersMu.RUnlock()
-
-		if exists {
+		subs := h.getSubscribers()
+		if _, exists := subs[chatID]; exists {
 			responseText = "✅ Статус: *Активен*\nВы получаете все RSI сигналы."
 		} else {
 			responseText = "❌ Статус: *Неактивен*\nПодпишитесь, чтобы получать сигналы."
@@ -162,12 +175,11 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 		showKeyboard = true
 
 	default:
-		if handled, msg := handleSettingsCallback(chatID, data); handled {
+		if handled, msg := h.handleSettingsCallback(chatID, data); handled {
 			responseText = msg
 			showKeyboard = true
 		} else {
-			callback := tgbotapi.NewCallback(query.ID, "")
-			bot.Request(callback)
+			h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 			return
 		}
 	}
@@ -182,51 +194,49 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 				),
 			)
 		}
-		bot.Send(msg)
+		h.bot.Send(msg)
 	}
 
-	callback := tgbotapi.NewCallback(query.ID, "")
-	bot.Request(callback)
+	h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 }
 
-// handleSettingsCallback обрабатывает callback'и настроек: показ подменю выбора (menu_tf, menu_ob и т.д.)
-// или применение значения (tf_5, ob_85 и т.д.). Возвращает (handled, responseText).
-func handleSettingsCallback(chatID int64, data string) (handled bool, responseText string) {
+// handleSettingsCallback обрабатывает callback настроек: показ подменю выбора (menu_tf и т.д.) или применение значения (tf_5, ob_85).
+// Для tf и limit после обновления конфига вызывается requestRestart.
+func (h *Handler) handleSettingsCallback(chatID int64, data string) (handled bool, responseText string) {
 	switch data {
 	case "menu_tf":
-		sendSettingsKeyboard(chatID, "Выберите таймфрейм (минуты):", [][]string{
-			{"1", "tf_1"}, {"5", "tf_5"}, {"15", "tf_15"}, {"60", "tf_60"},
+		h.sendSettingsKeyboard(chatID, "Выберите таймфрейм (минуты):", [][]string{
+			{"5", "tf_5"}, {"15", "tf_15"}, {"30", "tf_30"}, {"60", "tf_60"},
 			{"240", "tf_240"},
 		}, "settings")
 		return true, ""
 
 	case "menu_limit":
-		sendSettingsKeyboard(chatID, "Число свечей для расчёта:", [][]string{
+		h.sendSettingsKeyboard(chatID, "Число свечей для расчёта:", [][]string{
 			{"50", "limit_50"}, {"100", "limit_100"}, {"200", "limit_200"},
 		}, "settings")
 		return true, ""
 
 	case "menu_rsi":
-		sendSettingsKeyboard(chatID, "Период RSI:", [][]string{
+		h.sendSettingsKeyboard(chatID, "Период RSI:", [][]string{
 			{"7", "rsi_7"}, {"14", "rsi_14"}, {"21", "rsi_21"},
 		}, "settings")
 		return true, ""
 
 	case "menu_ob":
-		sendSettingsKeyboard(chatID, "Верхний порог RSI (перекупленность):", [][]string{
+		h.sendSettingsKeyboard(chatID, "Верхний порог RSI (перекупленность):", [][]string{
 			{"70", "ob_70"}, {"75", "ob_75"}, {"80", "ob_80"}, {"85", "ob_85"},
-			{"90", "ob_90"}, {"95", "ob_95"}, {"100", "ob_100"}, 
+			{"90", "ob_90"}, {"95", "ob_95"}, {"100", "ob_100"},
 		}, "settings")
 		return true, ""
 
 	case "menu_os":
-		sendSettingsKeyboard(chatID, "Нижний порог RSI (перепроданность):", [][]string{
-			{"15", "os_15"}, {"20", "os_20"}, {"25", "os_25"}, {"30", "os_30"},
+		h.sendSettingsKeyboard(chatID, "Нижний порог RSI (перепроданность):", [][]string{
+			{"0", "os_0"}, {"15", "os_15"}, {"20", "os_20"}, {"25", "os_25"}, {"30", "os_30"},
 		}, "settings")
 		return true, ""
 	}
 
-	// Применение значения (tf_5, limit_100, rsi_14, ob_80, os_20)
 	parts := strings.SplitN(data, "_", 2)
 	if len(parts) != 2 {
 		return false, ""
@@ -235,26 +245,28 @@ func handleSettingsCallback(chatID int64, data string) (handled bool, responseTe
 
 	switch key {
 	case "tf":
-		UpdateConfig(func(c *Config) { c.Timeframe = val })
-		return true, fmt.Sprintf("✅ Таймфрейм: %s мин", val)
+		_ = config.Update(func(c *config.Config) { c.Timeframe = val })
+		h.requestRestart()
+		return true, fmt.Sprintf("✅ Таймфрейм: %s мин. Цикл анализа перезапущен.", val)
 	case "limit":
 		if v, err := strconv.Atoi(val); err == nil && v > 0 {
-			UpdateConfig(func(c *Config) { c.Limit = v })
-			return true, fmt.Sprintf("✅ Число свечей: %d", v)
+			_ = config.Update(func(c *config.Config) { c.Limit = v })
+			h.requestRestart()
+			return true, fmt.Sprintf("✅ Число свечей: %d. Цикл анализа перезапущен.", v)
 		}
 	case "rsi":
 		if v, err := strconv.Atoi(val); err == nil && v > 0 {
-			UpdateConfig(func(c *Config) { c.RSIPeriod = v })
+			_ = config.Update(func(c *config.Config) { c.RSIPeriod = v })
 			return true, fmt.Sprintf("✅ Период RSI: %d", v)
 		}
 	case "ob":
 		if v, err := strconv.ParseFloat(val, 64); err == nil {
-			UpdateConfig(func(c *Config) { c.Overbought = v })
+			_ = config.Update(func(c *config.Config) { c.Overbought = v })
 			return true, fmt.Sprintf("✅ Верхний порог RSI: %.0f", v)
 		}
 	case "os":
 		if v, err := strconv.ParseFloat(val, 64); err == nil {
-			UpdateConfig(func(c *Config) { c.Oversold = v })
+			_ = config.Update(func(c *config.Config) { c.Oversold = v })
 			return true, fmt.Sprintf("✅ Нижний порог RSI: %.0f", v)
 		}
 	}
@@ -262,9 +274,8 @@ func handleSettingsCallback(chatID int64, data string) (handled bool, responseTe
 	return false, ""
 }
 
-// sendSettingsKeyboard отправляет сообщение с inline-кнопками выбора значения настройки и кнопкой «Назад».
-// options — пары [подпись, callback_data], например {"85", "ob_85"}. backCallback — callback для «Назад».
-func sendSettingsKeyboard(chatID int64, text string, options [][]string, backCallback string) {
+// sendSettingsKeyboard отправляет сообщение с кнопками выбора (options: подпись, callback_data) и кнопкой «Назад».
+func (h *Handler) sendSettingsKeyboard(chatID int64, text string, options [][]string, backCallback string) {
 	var rows [][]tgbotapi.InlineKeyboardButton
 	var row []tgbotapi.InlineKeyboardButton
 	for i, opt := range options {
@@ -278,43 +289,32 @@ func sendSettingsKeyboard(chatID int64, text string, options [][]string, backCal
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
-	bot.Send(msg)
+	h.bot.Send(msg)
 }
 
-// unsubscribeUser снимает пользователя с подписки по команде /stop и отправляет подтверждение.
-func unsubscribeUser(chatID int64) {
-	subscribersMu.Lock()
-	defer subscribersMu.Unlock()
-
-	if _, exists := subscribers[chatID]; exists {
-		delete(subscribers, chatID)
-		saveSubscribers()
-		log.Printf("Пользователь отписался: %d", chatID)
-	}
-
+// unsubscribeUser снимает пользователя с подписки (команда /stop) и отправляет подтверждение.
+func (h *Handler) unsubscribeUser(chatID int64) {
+	h.unsubscribe(chatID)
 	msg := tgbotapi.NewMessage(chatID, "❌ Вы отписались от сигналов")
-	bot.Send(msg)
+	h.bot.Send(msg)
 }
 
-// checkSubscriptionStatus отправляет пользователю текущий статус подписки (подписан / не подписан).
-func checkSubscriptionStatus(chatID int64) {
-	subscribersMu.RLock()
-	_, exists := subscribers[chatID]
-	subscribersMu.RUnlock()
-
+// checkSubscriptionStatus отправляет пользователю статус подписки (подписан / не подписан).
+func (h *Handler) checkSubscriptionStatus(chatID int64) {
+	subs := h.getSubscribers()
 	status := "❌ Не подписан"
-	if exists {
+	if _, exists := subs[chatID]; exists {
 		status = "✅ Подписан"
 	}
 
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("📊 *Статус подписки*\n\n%s", status))
 	msg.ParseMode = "Markdown"
-	bot.Send(msg)
+	h.bot.Send(msg)
 }
 
 // showHelp отправляет справку по командам и текущим параметрам расчёта RSI.
-func showHelp(chatID int64) {
-	cfg := GetConfig()
+func (h *Handler) showHelp(chatID int64) {
+	cfg := config.Get()
 	helpText := fmt.Sprintf(`🤖 *Бот RSI Сигналов*
 
 *Команды:*
@@ -330,5 +330,5 @@ func showHelp(chatID int64) {
 
 	msg := tgbotapi.NewMessage(chatID, helpText)
 	msg.ParseMode = "Markdown"
-	bot.Send(msg)
+	h.bot.Send(msg)
 }
