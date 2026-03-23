@@ -14,15 +14,21 @@ import (
 )
 
 const (
-	binanceExchangeInfoURL = "https://api.binance.com/api/v3/exchangeInfo"
-	bybitKlineURL          = "https://api.bybit.com/v5/market/kline"
+	bybitInstrumentsPath = "/v5/market/instruments-info?category=linear"
+	bybitKlinePathFmt    = "/v5/market/kline?category=linear&symbol=%s&interval=%s&limit=%d"
 )
+
+var bybitMainnetHosts = []string{
+	"https://api.bybit.com",
+	"https://api.bytick.com",
+	"https://api.bybit.kz",
+	"https://api.bybit-tr.com",
+	"https://api.bybit.ae",
+}
 
 // DerivativePairs возвращает список символов линейных деривативов Bybit (category=linear) в статусе Trading.
 func DerivativePairs() ([]string, error) {
-	url := "https://api.bybit.com/v5/market/instruments-info?category=linear"
-
-	body, err := bybitGET(url, 15*time.Second)
+	body, err := bybitGETAny(bybitInstrumentsPath, 15*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -57,26 +63,7 @@ func DerivativePairs() ([]string, error) {
 // Candles запрашивает свечи с Bybit (linear) и возвращает цены закрытия в хронологическом порядке (старые → новые).
 // symbol — тикер, например BTCUSDT; timeframe — интервал: "5", "15", "60", "240" и т.д.; limit — число свечей.
 func Candles(symbol, timeframe string, limit int) ([]float64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	url := fmt.Sprintf("%s?category=linear&symbol=%s&interval=%s&limit=%d",
-		bybitKlineURL, symbol, timeframe, limit)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "crypto-bot/1.0")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := bybitGETAny(fmt.Sprintf(bybitKlinePathFmt, symbol, timeframe, limit), 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +90,21 @@ func Candles(symbol, timeframe string, limit int) ([]float64, error) {
 	return closes, nil
 }
 
+// bybitGETAny пробует выполнить запрос к нескольким официальным mainnet-доменам Bybit.
+// Это нужно, потому что некоторые регионы/сети могут получать 403 на api.bybit.com.
+func bybitGETAny(pathAndQuery string, timeout time.Duration) ([]byte, error) {
+	var lastErr error
+	for _, host := range bybitMainnetHosts {
+		url := host + pathAndQuery
+		body, err := bybitGET(url, timeout)
+		if err == nil {
+			return body, nil
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("не удалось получить ответ Bybit ни с одного домена: %w", lastErr)
+}
+
 // bybitGET выполняет GET-запрос к Bybit c базовыми заголовками и проверкой,
 // что пришёл JSON-ответ с HTTP 200. Если приходит HTML (например, блокировка/ошибка),
 // возвращает понятную ошибку с фрагментом тела.
@@ -114,8 +116,9 @@ func bybitGET(url string, timeout time.Duration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "crypto-bot/1.0")
+	// Делаем запрос максимально похожим на успешный curl из Postman.
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", "curl/8.7.1")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
