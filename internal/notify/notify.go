@@ -1,5 +1,4 @@
-// Package notify отвечает за рассылку уведомлений подписчикам Telegram-бота.
-// Хранит состояние последнего сигнала по каждому символу (анти-спам: не слать один и тот же тип повторно).
+// Package notify рассылает подписчикам уведомление при Stoch RSI = 100 (1h).
 package notify
 
 import (
@@ -10,15 +9,15 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Notifier хранит состояние последних сигналов по символу (анти-спам) и рассылает сообщения подписчикам.
+const signalType = "100" // один тип сигнала — Stoch RSI = 100
+
 type Notifier struct {
 	bot        *tgbotapi.BotAPI
-	lastSignal map[string]string // symbol -> "SHORT"|"LONG", чтобы не слать один и тот же сигнал повторно
+	lastSignal map[string]string
 	mu         sync.RWMutex
-	getSubs    func() map[int64]bool // вызывается при каждой рассылке для актуального списка
+	getSubs    func() map[int64]bool
 }
 
-// New создаёт Notifier. getSubs вызывается при каждой рассылке, чтобы брать актуальный список подписчиков.
 func New(bot *tgbotapi.BotAPI, getSubs func() map[int64]bool) *Notifier {
 	return &Notifier{
 		bot:        bot,
@@ -27,8 +26,8 @@ func New(bot *tgbotapi.BotAPI, getSubs func() map[int64]bool) *Notifier {
 	}
 }
 
-// ShouldSend возвращает true, если для этого символа ещё не отправлялся такой тип сигнала (или тип изменился), и запоминает его.
-func (n *Notifier) ShouldSend(symbol, signalType string) bool {
+// ShouldSend возвращает true, если для символа ещё не отправляли сигнал (Stoch RSI = 100), и запоминает отправку.
+func (n *Notifier) ShouldSend(symbol string) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.lastSignal[symbol] == signalType {
@@ -38,54 +37,19 @@ func (n *Notifier) ShouldSend(symbol, signalType string) bool {
 	return true
 }
 
-// ClearSignal сбрасывает последний отправленный сигнал по символу (вызывается, когда RSI вернулся в нейтральную зону).
-func (n *Notifier) ClearSignal(symbol string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.lastSignal[symbol] = ""
-}
-
-// SendSignal отправляет уведомление подписчикам, если анти-спам разрешает.
-// timeframe и limit показываются в сообщении (таймфрейм в минутах, число свечей).
-// SHORT и LONG оформлены по-разному для быстрого визуального отличия.
-func (n *Notifier) SendSignal(symbol, signalType string, rsi float64, timeframe string, limit int) {
-	if !n.ShouldSend(symbol, signalType) {
+// SendSignal отправляет уведомление «Stoch RSI (1h) = 100» по символу, если ещё не отправляли для этого символа.
+// period — выбранный период RSI/Stoch (7, 14 или 21).
+func (n *Notifier) SendSignal(symbol string, value float64, period int) {
+	if !n.ShouldSend(symbol) {
 		return
 	}
-
-	paramsLine := fmt.Sprintf("Таймфрейм: %s мин, свечей: %d", timeframe, limit)
-
-	var message string
-	switch signalType {
-	case "SHORT":
-		message = fmt.Sprintf(
-			"🔴 📉 *SHORT* — перекупленность\n\n"+
-				"Symbol: `%s`\n"+
-				"RSI: *%.2f*\n"+
-				"%s",
-			symbol, rsi, paramsLine,
-		)
-	case "LONG":
-		message = fmt.Sprintf(
-			"🟢 📈 *LONG* — перепроданность\n\n"+
-				"Symbol: `%s`\n"+
-				"RSI: *%.2f*\n"+
-				"%s",
-			symbol, rsi, paramsLine,
-		)
-	default:
-		message = fmt.Sprintf("🚨 %s SIGNAL\nSymbol: %s\nRSI: %.2f\n%s", signalType, symbol, rsi, paramsLine)
-	}
-
-	n.BroadcastMarkdown(message)
+	message := fmt.Sprintf(
+		"🔴 *Stoch RSI (1h) = 100*\n\nSymbol: `%s`\nStoch RSI: *%.2f*\n\nТаймфрейм: 1h, период: %d",
+		symbol, value, period,
+	)
+	n.broadcast(message, "Markdown")
 }
 
-// Broadcast отправляет сообщение всем подписчикам (обычный текст).
-func (n *Notifier) Broadcast(message string) {
-	n.broadcast(message, "")
-}
-
-// broadcast отправляет одно сообщение всем подписчикам. parseMode — "Markdown" или "HTML", пустая строка — обычный текст.
 func (n *Notifier) broadcast(message, parseMode string) {
 	subs := n.getSubs()
 	for chatID := range subs {
@@ -97,9 +61,4 @@ func (n *Notifier) broadcast(message, parseMode string) {
 			log.Printf("Не удалось отправить сообщение %d: %v", chatID, err)
 		}
 	}
-}
-
-// BroadcastMarkdown отправляет сообщение с разметкой Markdown (например *жирный*, `код`).
-func (n *Notifier) BroadcastMarkdown(message string) {
-	n.broadcast(message, "Markdown")
 }

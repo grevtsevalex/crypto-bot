@@ -1,4 +1,4 @@
-// Package config хранит и загружает настройки расчёта RSI и оповещений (таймфрейм, пороги, токен и т.д.).
+// Package config хранит настройки бота (токен, период, порог Stoch RSI, лимиты).
 package config
 
 import (
@@ -7,37 +7,52 @@ import (
 	"sync"
 )
 
-// Config — параметры расчёта RSI и оповещений.
-// Поля совпадают с JSON в config.json.
+// Config — параметры бота. Дефолты совпадают с текущими «хорошими» значениями сигналов.
 type Config struct {
-	Timeframe       string  `json:"timeframe"`        // интервал свечей: "5", "15", "60" и т.д. (минуты)
-	Limit           int     `json:"limit"`            // число свечей для расчёта RSI
-	RSIPeriod       int     `json:"rsi_period"`       // период RSI (обычно 14)
-	Overbought      float64 `json:"overbought"`        // верхний порог: RSI >= Overbought → сигнал SHORT
-	Oversold        float64 `json:"oversold"`         // нижний порог: RSI <= Oversold → сигнал LONG
-	TelegramToken   string  `json:"telegram_token"`   // токен Telegram-бота
-	SubscribersFile string  `json:"subscribers_file"`  // путь к JSON с подписчиками (chatID)
+	TelegramToken        string  `json:"telegram_token"`
+	SubscribersFile      string  `json:"subscribers_file"`
+	Period               int     `json:"period"`                  // 7, 14 или 21 — RSI и Stoch
+	StochRSIThreshold    float64 `json:"stoch_rsi_threshold"`     // сигнал при Stoch RSI >= этого значения
+	MaxSignalsPerCycle   int     `json:"max_signals_per_cycle"`   // макс. уведомлений за один проход по парам
+	CandleLimit          int     `json:"candle_limit"`            // число часовых свечей для расчёта
 }
 
 var (
-	cfg     Config   // текущий конфиг в памяти
+	cfg     Config
 	cfgMu   sync.RWMutex
-	cfgPath string   // путь к config.json, задаётся в Load
+	cfgPath string
 )
 
-// Default возвращает конфиг по умолчанию.
+// Default возвращает конфиг по умолчанию (как сейчас в проде).
 func Default() Config {
 	return Config{
-		Timeframe:       "5",
-		Limit:           100,
-		RSIPeriod:       14,
-		Overbought:      80.0,
-		Oversold:        20.0,
-		SubscribersFile: "subscribers.json",
+		SubscribersFile:     "subscribers.json",
+		Period:              14,
+		StochRSIThreshold:   99.99,
+		MaxSignalsPerCycle:  10,
+		CandleLimit:         100,
 	}
 }
 
-// Load загружает конфиг из файла; при отсутствии файла создаёт его с дефолтами.
+func normalize(c *Config) {
+	if c.SubscribersFile == "" {
+		c.SubscribersFile = "subscribers.json"
+	}
+	if c.Period != 7 && c.Period != 14 && c.Period != 21 {
+		c.Period = 14
+	}
+	if c.StochRSIThreshold <= 0 || c.StochRSIThreshold > 100 {
+		c.StochRSIThreshold = 99.99
+	}
+	if c.MaxSignalsPerCycle <= 0 {
+		c.MaxSignalsPerCycle = 10
+	}
+	if c.CandleLimit < 50 || c.CandleLimit > 500 {
+		c.CandleLimit = 100
+	}
+}
+
+// Load загружает конфиг из файла; при отсутствии создаёт с дефолтами.
 func Load(path string) error {
 	cfgPath = path
 	data, err := os.ReadFile(path)
@@ -50,7 +65,11 @@ func Load(path string) error {
 	}
 	cfgMu.Lock()
 	defer cfgMu.Unlock()
-	return json.Unmarshal(data, &cfg)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+	normalize(&cfg)
+	return nil
 }
 
 // Save сохраняет конфиг в файл.
@@ -71,11 +90,12 @@ func Get() Config {
 	return cfg
 }
 
-// Update обновляет конфиг через функцию и сохраняет в файл.
+// Update обновляет конфиг и сохраняет в файл.
 func Update(updater func(*Config)) error {
 	cfgMu.Lock()
 	defer cfgMu.Unlock()
 	updater(&cfg)
+	normalize(&cfg)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err

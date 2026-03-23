@@ -1,6 +1,4 @@
-// Пакет main — точка входа Telegram-бота, который считает RSI по криптопарам (свечи с Bybit)
-// и рассылает подписчикам сигналы при перекупленности (SHORT) или перепроданности (LONG).
-// Конфиг и подписчики хранятся в JSON-файлах; настройки можно менять через бота.
+// Пакет main — точка входа бота: Stoch RSI на таймфрейме 1h (Bybit), уведомление при Stoch RSI = 100.
 package main
 
 import (
@@ -19,20 +17,19 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+const timeframe = "60" // 1 час (Bybit interval), не настраивается
+
 var (
 	bot           *tgbotapi.BotAPI
 	notifier      *notify.Notifier
-	subscribers   = make(map[int64]bool) // chatID -> true, доступ под subscribersMu
+	subscribers   = make(map[int64]bool)
 	subscribersMu sync.RWMutex
-	restartCh     = make(chan struct{}, 1) // при отправке значения цикл анализа перезапускается
 )
 
-// getSubscribersFile возвращает путь к файлу подписчиков из текущего конфига.
 func getSubscribersFile() string {
 	return config.Get().SubscribersFile
 }
 
-// loadSubscribers загружает список подписчиков из JSON-файла в память.
 func loadSubscribers() error {
 	path := getSubscribersFile()
 	data, err := os.ReadFile(path)
@@ -42,30 +39,24 @@ func loadSubscribers() error {
 		}
 		return err
 	}
-
 	subscribersMu.Lock()
 	defer subscribersMu.Unlock()
-
 	return json.Unmarshal(data, &subscribers)
 }
 
 func saveSubscribers() error {
 	subscribersMu.RLock()
 	defer subscribersMu.RUnlock()
-
 	data, err := json.MarshalIndent(subscribers, "", "  ")
 	if err != nil {
 		return err
 	}
-
 	return os.WriteFile(getSubscribersFile(), data, 0644)
 }
 
-// getSubscribers возвращает копию карты подписчиков (chatID) для безопасного чтения из других горутин.
 func getSubscribers() map[int64]bool {
 	subscribersMu.RLock()
 	defer subscribersMu.RUnlock()
-
 	out := make(map[int64]bool, len(subscribers))
 	for k, v := range subscribers {
 		out[k] = v
@@ -73,7 +64,6 @@ func getSubscribers() map[int64]bool {
 	return out
 }
 
-// subscribe добавляет пользователя в подписчики и сохраняет файл.
 func subscribe(chatID int64) {
 	subscribersMu.Lock()
 	subscribers[chatID] = true
@@ -81,7 +71,6 @@ func subscribe(chatID int64) {
 	saveSubscribers()
 }
 
-// unsubscribe удаляет пользователя из подписчиков и сохраняет файл.
 func unsubscribe(chatID int64) {
 	subscribersMu.Lock()
 	if _, exists := subscribers[chatID]; exists {
@@ -92,19 +81,10 @@ func unsubscribe(chatID int64) {
 	subscribersMu.Unlock()
 }
 
-// requestRestart отправляет в канал сигнал перезапуска цикла анализа (без блокировки, если канал занят).
-func requestRestart() {
-	select {
-	case restartCh <- struct{}{}:
-	default:
-	}
-}
-
 func main() {
 	if err := config.Load("config.json"); err != nil {
 		log.Fatalf("Ошибка загрузки конфига: %v", err)
 	}
-
 	cfg := config.Get()
 	if cfg.TelegramToken == "" {
 		log.Fatal("Укажите telegram_token в config.json")
@@ -123,12 +103,11 @@ func main() {
 	bot = botApi
 	notifier = notify.New(botApi, getSubscribers)
 
-	h := handlers.New(bot, getSubscribers, subscribe, unsubscribe, requestRestart)
+	h := handlers.New(bot, getSubscribers, subscribe, unsubscribe)
 	go h.HandleUpdates()
 
 	for {
-	restart:
-		log.Println("Запуск анализа рынка...")
+		log.Println("Запуск анализа рынка (1h Stoch RSI)...")
 
 		symbols, err := exchange.DerivativePairs()
 		if err != nil {
@@ -137,16 +116,19 @@ func main() {
 			continue
 		}
 
+		loopCfg := config.Get()
+		maxPer := loopCfg.MaxSignalsPerCycle
+		if maxPer <= 0 {
+			maxPer = 10
+		}
+		sentThisCycle := 0
 		for _, symbol := range symbols {
-			select {
-			case <-restartCh:
-				log.Println("Перезапуск цикла по запросу (изменён таймфрейм или число свечей)")
-				goto restart
-			default:
+			if sentThisCycle >= maxPer {
+				break
 			}
-
-			cfg := config.Get()
-			processSymbol(symbol, cfg)
+			if processSymbol(symbol) {
+				sentThisCycle++
+			}
 			time.Sleep(100 * time.Millisecond)
 		}
 
@@ -155,22 +137,34 @@ func main() {
 	}
 }
 
-// processSymbol запрашивает свечи по символу, считает RSI и при выходе за пороги отправляет сигнал подписчикам.
-func processSymbol(symbol string, cfg config.Config) {
-	closes, err := exchange.Candles(symbol, cfg.Timeframe, cfg.Limit)
+// processSymbol запрашивает часовые свечи, считает Stoch RSI; шлёт уведомление только при Stoch RSI ≈ 100.
+// Возвращает true, если уведомление было отправлено.
+func processSymbol(symbol string) bool {
+	cfg := config.Get()
+	limit := cfg.CandleLimit
+	if limit < 50 {
+		limit = 100
+	}
+	closes, err := exchange.Candles(symbol, timeframe, limit)
 	if err != nil {
 		log.Printf("Ошибка свечей %s: %v", symbol, err)
-		return
+		return false
 	}
 
-	value := rsi.Calc(closes, cfg.RSIPeriod)
-	log.Printf("%s RSI=%.2f", symbol, value)
-
-	if value >= cfg.Overbought {
-		notifier.SendSignal(symbol, "SHORT", value, cfg.Timeframe, cfg.Limit)
-	} else if value <= cfg.Oversold {
-		notifier.SendSignal(symbol, "LONG", value, cfg.Timeframe, cfg.Limit)
-	} else {
-		notifier.ClearSignal(symbol)
+	period := cfg.Period
+	if period != 7 && period != 14 && period != 21 {
+		period = 14
 	}
+	value := rsi.CalcStochRSI(closes, period, period)
+	log.Printf("%s Stoch RSI(1h,%d)=%.2f", symbol, period, value)
+
+	thr := cfg.StochRSIThreshold
+	if thr <= 0 || thr > 100 {
+		thr = 99.99
+	}
+	if value >= thr {
+		notifier.SendSignal(symbol, value, period)
+		return true
+	}
+	return false
 }
