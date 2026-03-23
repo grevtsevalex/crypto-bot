@@ -26,7 +26,7 @@ func New(bot *tgbotapi.BotAPI, getSubs func() map[int64]bool) *Notifier {
 	}
 }
 
-// ShouldSend возвращает true, если для символа ещё не отправляли сигнал (Stoch RSI = 100), и запоминает отправку.
+// ShouldSend возвращает true, если для символа ещё не отправляли сигнал в текущем заходе в зону >= порога.
 func (n *Notifier) ShouldSend(symbol string) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -35,6 +35,14 @@ func (n *Notifier) ShouldSend(symbol string) bool {
 	}
 	n.lastSignal[symbol] = signalType
 	return true
+}
+
+// ClearSignal сбрасывает состояние символа, когда значение ушло ниже порога.
+// Это позволяет отправить сигнал снова при следующем новом заходе к 100.
+func (n *Notifier) ClearSignal(symbol string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.lastSignal[symbol] = ""
 }
 
 // SendSignal отправляет уведомление «Stoch RSI (1h) = 100» по символу, если ещё не отправляли для этого символа.

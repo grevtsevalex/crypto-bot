@@ -166,5 +166,7 @@ func processSymbol(symbol string) bool {
 		notifier.SendSignal(symbol, value, period)
 		return true
 	}
+	// Ушли ниже порога — сбрасываем, чтобы при следующем новом заходе сигнал снова отправился.
+	notifier.ClearSignal(symbol)
 	return false
 }
