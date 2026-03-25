@@ -37,14 +37,6 @@ func (n *Notifier) ShouldSend(symbol string) bool {
 	return true
 }
 
-// ClearSignal сбрасывает состояние символа, когда значение ушло ниже порога.
-// Это позволяет отправить сигнал снова при следующем новом заходе к 100.
-func (n *Notifier) ClearSignal(symbol string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.lastSignal[symbol] = ""
-}
-
 // SendSignal отправляет уведомление «Stoch RSI (1h) = 100» по символу, если ещё не отправляли для этого символа.
 // period — выбранный период RSI/Stoch (7, 14 или 21).
 func (n *Notifier) SendSignal(symbol string, value float64, period int) {
