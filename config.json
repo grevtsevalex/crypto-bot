@@ -1,5 +1,7 @@
 {
   "telegram_token": "8296325515:AAEG-u5Ks-MlJOFMEWzG9dPzDKC1FrTDZpI",
   "subscribers_file": "subscribers.json",
-  "period": 7
+  "timeframe": "60",
+  "max_signals_per_cycle": 10,
+  "candle_limit": 100
 }

@@ -1,4 +1,4 @@
-// Package config хранит настройки бота (токен, период, порог Stoch RSI, лимиты).
+// Package config хранит настройки бота (токен, таймфрейм и лимиты).
 package config
 
 import (
@@ -7,14 +7,13 @@ import (
 	"sync"
 )
 
-// Config — параметры бота. Дефолты совпадают с текущими «хорошими» значениями сигналов.
+// Config — параметры бота.
 type Config struct {
-	TelegramToken        string  `json:"telegram_token"`
-	SubscribersFile      string  `json:"subscribers_file"`
-	Period               int     `json:"period"`                  // 7, 14 или 21 — RSI и Stoch
-	StochRSIThreshold    float64 `json:"stoch_rsi_threshold"`     // сигнал при Stoch RSI >= этого значения
-	MaxSignalsPerCycle   int     `json:"max_signals_per_cycle"`   // макс. уведомлений за один проход по парам
-	CandleLimit          int     `json:"candle_limit"`            // число часовых свечей для расчёта
+	TelegramToken      string `json:"telegram_token"`
+	SubscribersFile    string `json:"subscribers_file"`
+	Timeframe          string `json:"timeframe"`
+	MaxSignalsPerCycle int    `json:"max_signals_per_cycle"` // макс. уведомлений за один проход по парам
+	CandleLimit        int    `json:"candle_limit"`          // число часовых свечей для расчёта
 }
 
 var (
@@ -23,14 +22,13 @@ var (
 	cfgPath string
 )
 
-// Default возвращает конфиг по умолчанию (как сейчас в проде).
+// Default возвращает значения по умолчанию.
 func Default() Config {
 	return Config{
-		SubscribersFile:     "subscribers.json",
-		Period:              14,
-		StochRSIThreshold:   99.99,
-		MaxSignalsPerCycle:  10,
-		CandleLimit:         100,
+		SubscribersFile:    "subscribers.json",
+		Timeframe:          "60",
+		MaxSignalsPerCycle: 10,
+		CandleLimit:        100,
 	}
 }
 
@@ -38,11 +36,10 @@ func normalize(c *Config) {
 	if c.SubscribersFile == "" {
 		c.SubscribersFile = "subscribers.json"
 	}
-	if c.Period != 7 && c.Period != 14 && c.Period != 21 {
-		c.Period = 14
-	}
-	if c.StochRSIThreshold <= 0 || c.StochRSIThreshold > 100 {
-		c.StochRSIThreshold = 99.99
+	switch c.Timeframe {
+	case "5", "15", "60", "240", "D":
+	default:
+		c.Timeframe = "60"
 	}
 	if c.MaxSignalsPerCycle <= 0 {
 		c.MaxSignalsPerCycle = 10

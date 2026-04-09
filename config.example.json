@@ -1,8 +1,7 @@
 {
   "telegram_token": "",
   "subscribers_file": "subscribers.json",
-  "period": 14,
-  "stoch_rsi_threshold": 99.99,
+  "timeframe": "60",
   "max_signals_per_cycle": 10,
   "candle_limit": 100
 }

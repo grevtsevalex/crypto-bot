@@ -1,4 +1,5 @@
-// Пакет main — точка входа бота: Stoch RSI на таймфрейме 1h (Bybit), уведомление при Stoch RSI = 100.
+// Пакет main — точка входа бота: RSI/Stoch RSI на выбранном таймфрейме Bybit,
+// уведомление при достижении порога по линии Stoch RSI %K.
 package main
 
 import (
@@ -17,7 +18,14 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-const timeframe = "60" // 1 час (Bybit interval), не настраивается
+const (
+	canonicalRSIPeriod         = 14
+	canonicalStochPeriod       = 14
+	canonicalSmoothK           = 3
+	canonicalSmoothD           = 3
+	canonicalRSIUpperThreshold = 70.0
+	canonicalStochThreshold    = 99.99
+)
 
 var (
 	bot           *tgbotapi.BotAPI
@@ -107,7 +115,7 @@ func main() {
 	go h.HandleUpdates()
 
 	for {
-		log.Println("Запуск анализа рынка (1h Stoch RSI)...")
+		log.Printf("Запуск анализа рынка (%s Stoch RSI)...", config.Get().Timeframe)
 
 		symbols, err := exchange.DerivativePairs()
 		if err != nil {
@@ -137,7 +145,8 @@ func main() {
 	}
 }
 
-// processSymbol запрашивает часовые свечи, считает Stoch RSI; шлёт уведомление только при Stoch RSI ≈ 100.
+// processSymbol запрашивает свечи выбранного таймфрейма, считает Bybit-подобные RSI и Stoch RSI;
+// шлёт уведомление только при верхней зоне RSI и %K Stoch RSI.
 // Возвращает true, если уведомление было отправлено.
 func processSymbol(symbol string) bool {
 	cfg := config.Get()
@@ -145,25 +154,20 @@ func processSymbol(symbol string) bool {
 	if limit < 50 {
 		limit = 100
 	}
-	closes, err := exchange.Candles(symbol, timeframe, limit)
+	closes, err := exchange.Candles(symbol, cfg.Timeframe, limit)
 	if err != nil {
 		log.Printf("Ошибка свечей %s: %v", symbol, err)
 		return false
 	}
 
-	period := cfg.Period
-	if period != 7 && period != 14 && period != 21 {
-		period = 14
-	}
-	value := rsi.CalcStochRSI(closes, period, period)
-	log.Printf("%s Stoch RSI(1h,%d)=%.2f", symbol, period, value)
+	values := rsi.CalcStochRSI(closes, canonicalRSIPeriod, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD)
+	log.Printf(
+		"%s RSI(%s,%d)=%.2f Stoch RSI(%d,%d,%d) raw=%.2f K=%.2f D=%.2f",
+		symbol, cfg.Timeframe, canonicalRSIPeriod, values.RSI, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD, values.RawK, values.K, values.D,
+	)
 
-	thr := cfg.StochRSIThreshold
-	if thr <= 0 || thr > 100 {
-		thr = 99.99
-	}
-	if value >= thr {
-		notifier.SendSignal(symbol, value, period)
+	if values.RSI >= canonicalRSIUpperThreshold && values.K >= canonicalStochThreshold {
+		notifier.SendSignal(symbol, cfg.Timeframe, values.RSI, values.K, canonicalRSIPeriod, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD)
 		return true
 	}
 

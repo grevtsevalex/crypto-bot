@@ -1,11 +1,20 @@
 // Package rsi содержит расчёт RSI (по Уайлдеру, как на Bybit/TradingView) и Stochastic RSI.
 package rsi
 
+// StochRSIValues хранит последние значения осцилляторов в формате,
+// близком к отображению на графиках Bybit/TradingView.
+type StochRSIValues struct {
+	RSI  float64
+	RawK float64
+	K    float64
+	D    float64
+}
+
 // RSI по Уайлдеру: первый RSI по SMA за period баров, далее сглаживание
 // avgGain_new = (prevAvgGain*13 + currentGain)/14, avgLoss_new = (prevAvgLoss*13 + currentLoss)/14.
 func rsiWilder(closes []float64, period int) []float64 {
 	n := len(closes)
-	if n < period+1 {
+	if period <= 0 || n < period+1 {
 		return nil
 	}
 	out := make([]float64, 0, n-period)
@@ -49,30 +58,92 @@ func rsiWilder(closes []float64, period int) []float64 {
 	return out
 }
 
-// CalcStochRSI считает Stochastic RSI по стандартной формуле (как на Bybit/TradingView):
-// 1) Серия RSI с сглаживанием Уайлдера (период 14).
-// 2) Stoch RSI = (текущий RSI − min(RSI за stochPeriod)) / (max − min) × 100.
-// closes — цены закрытия, старые → новые. rsiPeriod и stochPeriod обычно 14.
-func CalcStochRSI(closes []float64, rsiPeriod, stochPeriod int) float64 {
-	rsiSeries := rsiWilder(closes, rsiPeriod)
-	if len(rsiSeries) < stochPeriod {
+// CalcRSI возвращает последнее значение RSI по Уайлдеру.
+func CalcRSI(closes []float64, period int) float64 {
+	rsiSeries := rsiWilder(closes, period)
+	if len(rsiSeries) == 0 {
 		return 0
 	}
-	last := len(rsiSeries) - 1
-	window := rsiSeries[last+1-stochPeriod : last+1]
+	return rsiSeries[len(rsiSeries)-1]
+}
 
-	cur := window[stochPeriod-1]
-	minR, maxR := window[0], window[0]
-	for _, v := range window {
-		if v < minR {
-			minR = v
+func sma(values []float64, period int) []float64 {
+	if period <= 0 || len(values) < period {
+		return nil
+	}
+
+	out := make([]float64, 0, len(values)-period+1)
+	var sum float64
+	for i, v := range values {
+		sum += v
+		if i >= period {
+			sum -= values[i-period]
 		}
-		if v > maxR {
-			maxR = v
+		if i >= period-1 {
+			out = append(out, sum/float64(period))
 		}
 	}
-	if maxR == minR {
-		return 50
+	return out
+}
+
+func stoch(values []float64, period int) []float64 {
+	if period <= 0 || len(values) < period {
+		return nil
 	}
-	return (cur - minR) / (maxR - minR) * 100
+
+	out := make([]float64, 0, len(values)-period+1)
+	for i := period - 1; i < len(values); i++ {
+		window := values[i+1-period : i+1]
+		cur := window[len(window)-1]
+		minV, maxV := window[0], window[0]
+		for _, v := range window {
+			if v < minV {
+				minV = v
+			}
+			if v > maxV {
+				maxV = v
+			}
+		}
+		if maxV == minV {
+			out = append(out, 0)
+			continue
+		}
+		out = append(out, (cur-minV)/(maxV-minV)*100)
+	}
+	return out
+}
+
+// CalcStochRSI считает Stochastic RSI в формате Bybit/TradingView:
+// 1) RSI по Уайлдеру.
+// 2) Raw Stoch RSI = Stoch(RSI, RSI, RSI, stochPeriod).
+// 3) %K = SMA(raw, smoothK), %D = SMA(%K, smoothD).
+// closes — цены закрытия, старые → новые. Классические значения: 14/14/3/3.
+func CalcStochRSI(closes []float64, rsiPeriod, stochPeriod, smoothK, smoothD int) StochRSIValues {
+	rsiSeries := rsiWilder(closes, rsiPeriod)
+	if len(rsiSeries) == 0 {
+		return StochRSIValues{}
+	}
+
+	rawSeries := stoch(rsiSeries, stochPeriod)
+	kSeries := sma(rawSeries, smoothK)
+	dSeries := sma(kSeries, smoothD)
+
+	values := StochRSIValues{
+		RSI: rsiSeries[len(rsiSeries)-1],
+	}
+	if len(rawSeries) > 0 {
+		values.RawK = rawSeries[len(rawSeries)-1]
+	}
+	if len(kSeries) > 0 {
+		values.K = kSeries[len(kSeries)-1]
+	} else {
+		values.K = values.RawK
+	}
+	if len(dSeries) > 0 {
+		values.D = dSeries[len(dSeries)-1]
+	} else {
+		values.D = values.K
+	}
+
+	return values
 }

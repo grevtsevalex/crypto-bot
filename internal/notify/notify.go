@@ -1,4 +1,4 @@
-// Package notify рассылает подписчикам уведомление при Stoch RSI = 100 (1h).
+// Package notify рассылает подписчикам уведомление при верхней зоне RSI и Stoch RSI %K (1h).
 package notify
 
 import (
@@ -9,7 +9,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-const signalType = "100" // один тип сигнала — Stoch RSI = 100
+const signalType = "upper" // один тип сигнала — верхняя зона RSI/Stoch RSI
 
 type Notifier struct {
 	bot        *tgbotapi.BotAPI
@@ -37,15 +37,14 @@ func (n *Notifier) ShouldSend(symbol string) bool {
 	return true
 }
 
-// SendSignal отправляет уведомление «Stoch RSI (1h) = 100» по символу, если ещё не отправляли для этого символа.
-// period — выбранный период RSI/Stoch (7, 14 или 21).
-func (n *Notifier) SendSignal(symbol string, value float64, period int) {
+// SendSignal отправляет уведомление о верхней зоне RSI/Stoch RSI, если ещё не отправляли для этого символа.
+func (n *Notifier) SendSignal(symbol, timeframe string, rsiValue, kValue float64, rsiPeriod, stochPeriod, smoothK, smoothD int) {
 	if !n.ShouldSend(symbol) {
 		return
 	}
 	message := fmt.Sprintf(
-		"🔴 *Stoch RSI (1h) = 100*\n\nSymbol: `%s`\nStoch RSI: *%.2f*\n\nТаймфрейм: 1h, период: %d",
-		symbol, value, period,
+		"🔴 *Upper RSI/Stoch RSI*\n\nSymbol: `%s`\nRSI: *%.2f*\nStoch RSI %%K: *%.2f*\n\nТаймфрейм: %s\nRSI period: %d\nStoch period: %d\nSmoothing: %d/%d",
+		symbol, rsiValue, kValue, timeframe, rsiPeriod, stochPeriod, smoothK, smoothD,
 	)
 	n.broadcast(message, "Markdown")
 }
