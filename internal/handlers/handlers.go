@@ -13,6 +13,7 @@ import (
 
 type Handler struct {
 	bot            *tgbotapi.BotAPI
+	signalMode     string
 	getSubscribers func() map[int64]bool
 	subscribe      func(chatID int64)
 	unsubscribe    func(chatID int64)
@@ -20,11 +21,13 @@ type Handler struct {
 
 func New(
 	bot *tgbotapi.BotAPI,
+	signalMode string,
 	getSubscribers func() map[int64]bool,
 	subscribe, unsubscribe func(chatID int64),
 ) *Handler {
 	return &Handler{
 		bot:            bot,
+		signalMode:     signalMode,
 		getSubscribers: getSubscribers,
 		subscribe:      subscribe,
 		unsubscribe:    unsubscribe,
@@ -73,7 +76,7 @@ func (h *Handler) showMainMenu(chatID int64) {
 			tgbotapi.NewInlineKeyboardButtonData("⚙️ Настройки", "settings"),
 		),
 	)
-	msg := tgbotapi.NewMessage(chatID, "🤖 *Бот Upper RSI/Stoch RSI*\n\nУведомление только по верхней зоне RSI и Stoch RSI.\nВыберите действие:")
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🤖 *%s*\n\n%s\nВыберите действие:", h.botTitle(), h.botDescription()))
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = kb
 	if _, err := h.bot.Send(msg); err != nil {
@@ -201,7 +204,7 @@ func (h *Handler) checkSubscriptionStatus(chatID int64) {
 
 func (h *Handler) showHelp(chatID int64) {
 	cfg := config.Get()
-	helpText := fmt.Sprintf(`🤖 *Бот Upper RSI/Stoch RSI*
+	helpText := fmt.Sprintf(`🤖 *%s*
 
 *Команды:*
 /start — главное меню
@@ -213,11 +216,25 @@ func (h *Handler) showHelp(chatID int64) {
 *Текущие параметры:*
 Таймфрейм: *%s*
 
-Расчёт индикаторов зафиксирован на канонических значениях Bybit/TradingView. Этот бот ловит только верхнюю зону.`,
-		humanTimeframe(cfg.Timeframe))
+Расчёт индикаторов зафиксирован на канонических значениях Bybit/TradingView. %s`,
+		h.botTitle(), humanTimeframe(cfg.Timeframe), h.botDescription())
 	msg := tgbotapi.NewMessage(chatID, helpText)
 	msg.ParseMode = "Markdown"
 	h.bot.Send(msg)
+}
+
+func (h *Handler) botTitle() string {
+	if h.signalMode == "lower" {
+		return "Бот Lower RSI/Stoch RSI"
+	}
+	return "Бот Upper RSI/Stoch RSI"
+}
+
+func (h *Handler) botDescription() string {
+	if h.signalMode == "lower" {
+		return "Уведомление только по нижней зоне RSI и Stoch RSI (%K около 0)."
+	}
+	return "Уведомление только по верхней зоне RSI и Stoch RSI."
 }
 
 func humanTimeframe(value string) string {

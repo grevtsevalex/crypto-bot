@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"log"
 	"os"
 	"sync"
@@ -24,7 +25,9 @@ const (
 	canonicalSmoothK           = 3
 	canonicalSmoothD           = 3
 	canonicalRSIUpperThreshold = 70.0
-	canonicalStochThreshold    = 99.99
+	canonicalRSILowerThreshold = 30.0
+	canonicalStochUpperLevel   = 99.99
+	canonicalStochLowerLevel   = 0.0
 )
 
 var (
@@ -76,26 +79,36 @@ func subscribe(chatID int64) {
 	subscribersMu.Lock()
 	subscribers[chatID] = true
 	subscribersMu.Unlock()
-	saveSubscribers()
+	if err := saveSubscribers(); err != nil {
+		log.Printf("Ошибка сохранения подписчиков: %v", err)
+	}
 }
 
 func unsubscribe(chatID int64) {
 	subscribersMu.Lock()
-	if _, exists := subscribers[chatID]; exists {
+	_, exists := subscribers[chatID]
+	if exists {
 		delete(subscribers, chatID)
-		saveSubscribers()
-		log.Printf("Пользователь отписался: %d", chatID)
 	}
 	subscribersMu.Unlock()
+	if exists {
+		if err := saveSubscribers(); err != nil {
+			log.Printf("Ошибка сохранения подписчиков: %v", err)
+		}
+		log.Printf("Пользователь отписался: %d", chatID)
+	}
 }
 
 func main() {
-	if err := config.Load("config.json"); err != nil {
+	configPath := flag.String("config", "config.json", "path to config file")
+	flag.Parse()
+
+	if err := config.Load(*configPath); err != nil {
 		log.Fatalf("Ошибка загрузки конфига: %v", err)
 	}
 	cfg := config.Get()
 	if cfg.TelegramToken == "" {
-		log.Fatal("Укажите telegram_token в config.json")
+		log.Fatalf("Укажите telegram_token в %s", *configPath)
 	}
 
 	if err := loadSubscribers(); err != nil {
@@ -109,13 +122,13 @@ func main() {
 		log.Fatal("Ошибка инициализации бота:", err)
 	}
 	bot = botApi
-	notifier = notify.New(botApi, getSubscribers)
+	notifier = notify.New(botApi, cfg.SignalMode, getSubscribers)
 
-	h := handlers.New(bot, getSubscribers, subscribe, unsubscribe)
+	h := handlers.New(bot, cfg.SignalMode, getSubscribers, subscribe, unsubscribe)
 	go h.HandleUpdates()
 
 	for {
-		log.Printf("Запуск анализа рынка (%s Stoch RSI)...", config.Get().Timeframe)
+		log.Printf("Запуск анализа рынка (%s, mode=%s)...", config.Get().Timeframe, config.Get().SignalMode)
 
 		symbols, err := exchange.DerivativePairs()
 		if err != nil {
@@ -145,8 +158,8 @@ func main() {
 	}
 }
 
-// processSymbol запрашивает свечи выбранного таймфрейма, считает Bybit-подобные RSI и Stoch RSI;
-// шлёт уведомление только при верхней зоне RSI и %K Stoch RSI.
+// processSymbol запрашивает свечи выбранного таймфрейма, считает Bybit-подобные RSI и Stoch RSI
+// и шлёт уведомление при достижении порога выбранного режима.
 // Возвращает true, если уведомление было отправлено.
 func processSymbol(symbol string) bool {
 	cfg := config.Get()
@@ -166,10 +179,18 @@ func processSymbol(symbol string) bool {
 		symbol, cfg.Timeframe, canonicalRSIPeriod, values.RSI, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD, values.RawK, values.K, values.D,
 	)
 
-	if values.RSI >= canonicalRSIUpperThreshold && values.K >= canonicalStochThreshold {
+	if shouldSignal(cfg.SignalMode, values.RSI, values.K) {
 		notifier.SendSignal(symbol, cfg.Timeframe, values.RSI, values.K, canonicalRSIPeriod, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD)
 		return true
 	}
+	notifier.ClearSignalState(symbol)
 
 	return false
+}
+
+func shouldSignal(signalMode string, rsiValue, kValue float64) bool {
+	if signalMode == "lower" {
+		return rsiValue <= canonicalRSILowerThreshold && kValue <= canonicalStochLowerLevel
+	}
+	return rsiValue >= canonicalRSIUpperThreshold && kValue >= canonicalStochUpperLevel
 }

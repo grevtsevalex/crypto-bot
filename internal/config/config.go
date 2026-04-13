@@ -11,6 +11,7 @@ import (
 type Config struct {
 	TelegramToken      string `json:"telegram_token"`
 	SubscribersFile    string `json:"subscribers_file"`
+	SignalMode         string `json:"signal_mode"`
 	Timeframe          string `json:"timeframe"`
 	MaxSignalsPerCycle int    `json:"max_signals_per_cycle"` // макс. уведомлений за один проход по парам
 	CandleLimit        int    `json:"candle_limit"`          // число часовых свечей для расчёта
@@ -26,6 +27,7 @@ var (
 func Default() Config {
 	return Config{
 		SubscribersFile:    "subscribers.json",
+		SignalMode:         "upper",
 		Timeframe:          "60",
 		MaxSignalsPerCycle: 10,
 		CandleLimit:        100,
@@ -33,8 +35,17 @@ func Default() Config {
 }
 
 func normalize(c *Config) {
+	switch c.SignalMode {
+	case "upper", "lower":
+	default:
+		c.SignalMode = "upper"
+	}
 	if c.SubscribersFile == "" {
-		c.SubscribersFile = "subscribers.json"
+		if c.SignalMode == "lower" {
+			c.SubscribersFile = "subscribers.lower.json"
+		} else {
+			c.SubscribersFile = "subscribers.json"
+		}
 	}
 	switch c.Timeframe {
 	case "5", "15", "60", "240", "D":
