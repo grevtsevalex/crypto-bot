@@ -28,6 +28,7 @@ const (
 	canonicalRSILowerThreshold = 30.0
 	canonicalStochUpperLevel   = 99.99
 	canonicalStochLowerLevel   = 0.0
+	canonicalStochLowerKSlack  = 1.0
 )
 
 var (
@@ -179,7 +180,7 @@ func processSymbol(symbol string) bool {
 		symbol, cfg.Timeframe, canonicalRSIPeriod, values.RSI, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD, values.RawK, values.K, values.D,
 	)
 
-	if shouldSignal(cfg.SignalMode, values.RSI, values.K) {
+	if shouldSignal(cfg.SignalMode, values.RSI, values.RawK, values.K) {
 		notifier.SendSignal(symbol, cfg.Timeframe, values.RSI, values.K, canonicalRSIPeriod, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD)
 		return true
 	}
@@ -188,9 +189,15 @@ func processSymbol(symbol string) bool {
 	return false
 }
 
-func shouldSignal(signalMode string, rsiValue, kValue float64) bool {
+func shouldSignal(signalMode string, rsiValue, rawKValue, kValue float64) bool {
 	if signalMode == "lower" {
-		return rsiValue <= canonicalRSILowerThreshold && kValue <= canonicalStochLowerLevel
+		if rsiValue > canonicalRSILowerThreshold {
+			return false
+		}
+		// После SMA(3) линия %K часто остается чуть выше нуля даже при raw Stoch RSI = 0.
+		// Для нижнего сигнала считаем касание низа валидным, если raw уже на нуле
+		// или сглаженный %K визуально остается у пола.
+		return rawKValue <= canonicalStochLowerLevel || kValue <= canonicalStochLowerKSlack
 	}
 	return rsiValue >= canonicalRSIUpperThreshold && kValue >= canonicalStochUpperLevel
 }
