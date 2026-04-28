@@ -13,6 +13,7 @@ type Config struct {
 	SubscribersFile    string `json:"subscribers_file"`
 	SignalMode         string `json:"signal_mode"`
 	Timeframe          string `json:"timeframe"`
+	LockTimeframe      bool   `json:"lock_timeframe"`
 	MaxSignalsPerCycle int    `json:"max_signals_per_cycle"` // макс. уведомлений за один проход по парам
 	CandleLimit        int    `json:"candle_limit"`          // число часовых свечей для расчёта
 }

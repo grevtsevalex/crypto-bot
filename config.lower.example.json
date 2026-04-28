@@ -1,8 +1,0 @@
-{
-  "telegram_token": "",
-  "subscribers_file": "subscribers.lower.json",
-  "signal_mode": "lower",
-  "timeframe": "60",
-  "max_signals_per_cycle": 10,
-  "candle_limit": 100
-}

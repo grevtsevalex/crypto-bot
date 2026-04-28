@@ -1,0 +1,9 @@
+{
+  "telegram_token": "8553913332:AAERYhYF69EgHBV4_7D4xbI8Or90-lKFEP4",
+  "subscribers_file": "subscribers.upper.60.json",
+  "signal_mode": "upper",
+  "timeframe": "60",
+  "lock_timeframe": true,
+  "max_signals_per_cycle": 10,
+  "candle_limit": 100
+}

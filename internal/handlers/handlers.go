@@ -66,16 +66,23 @@ func (h *Handler) HandleUpdates() {
 }
 
 func (h *Handler) showMainMenu(chatID int64) {
-	kb := tgbotapi.NewInlineKeyboardMarkup(
+	rows := [][]tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Подписаться", "subscribe"),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отписаться", "unsubscribe"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
+	}
+	if config.Get().LockTimeframe {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📊 Статус подписки", "status"),
+		))
+	} else {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📊 Статус подписки", "status"),
 			tgbotapi.NewInlineKeyboardButtonData("⚙️ Настройки", "settings"),
-		),
-	)
+		))
+	}
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🤖 *%s*\n\n%s\nВыберите действие:", h.botTitle(), h.botDescription()))
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = kb
@@ -86,6 +93,12 @@ func (h *Handler) showMainMenu(chatID int64) {
 
 func (h *Handler) showSettingsOverview(chatID int64) {
 	cfg := config.Get()
+	if cfg.LockTimeframe {
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("⚙️ Таймфрейм зафиксирован: *%s*", humanTimeframe(cfg.Timeframe)))
+		msg.ParseMode = "Markdown"
+		h.bot.Send(msg)
+		return
+	}
 	text := fmt.Sprintf(
 		"⚙️ *Настройки*\n\n"+
 			"Таймфрейм: *%s*\n"+
@@ -158,12 +171,22 @@ func (h *Handler) handleCallback(query *tgbotapi.CallbackQuery) {
 		h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 		return
 	case "menu_timeframe":
+		if config.Get().LockTimeframe {
+			responseText = "⚠️ Таймфрейм зафиксирован в конфиге бота."
+			showKeyboard = true
+			break
+		}
 		h.sendSubmenu(chatID, "Таймфрейм свечей:", [][]string{
 			{"5m", "timeframe_5"}, {"15m", "timeframe_15"}, {"1h", "timeframe_60"}, {"4h", "timeframe_240"}, {"1D", "timeframe_D"},
 		}, "settings")
 		h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 		return
 	case "timeframe_5", "timeframe_15", "timeframe_60", "timeframe_240", "timeframe_D":
+		if config.Get().LockTimeframe {
+			responseText = "⚠️ Таймфрейм зафиксирован в конфиге бота."
+			showKeyboard = true
+			break
+		}
 		value := strings.TrimPrefix(data, "timeframe_")
 		_ = config.Update(func(c *config.Config) { c.Timeframe = value })
 		responseText = fmt.Sprintf("✅ Таймфрейм: %s", humanTimeframe(value))
@@ -224,17 +247,19 @@ func (h *Handler) showHelp(chatID int64) {
 }
 
 func (h *Handler) botTitle() string {
+	tf := humanTimeframe(config.Get().Timeframe)
 	if h.signalMode == "lower" {
-		return "Бот Lower RSI/Stoch RSI"
+		return fmt.Sprintf("Бот Lower RSI/Stoch RSI %s", tf)
 	}
-	return "Бот Upper RSI/Stoch RSI"
+	return fmt.Sprintf("Бот Upper RSI/Stoch RSI %s", tf)
 }
 
 func (h *Handler) botDescription() string {
+	tf := humanTimeframe(config.Get().Timeframe)
 	if h.signalMode == "lower" {
-		return "Уведомление только по нижней зоне RSI и Stoch RSI (%K около 0)."
+		return fmt.Sprintf("Уведомление только по нижней зоне RSI и Stoch RSI (%%K около 0). Таймфрейм: %s.", tf)
 	}
-	return "Уведомление только по верхней зоне RSI и Stoch RSI."
+	return fmt.Sprintf("Уведомление только по верхней зоне RSI и Stoch RSI. Таймфрейм: %s.", tf)
 }
 
 func humanTimeframe(value string) string {

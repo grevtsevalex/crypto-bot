@@ -1,55 +1,86 @@
-# Простой Makefile для RSI бота
+# Простой Makefile для RSI ботов
 
-# Имя бинарного файла
 BINARY=rsi-bot
-UPPER_LOG=bot.log
-LOWER_LOG=bot.lower.log
 
-# Собрать бота
+UPPER_60_CFG=config.upper.60.json
+UPPER_240_CFG=config.upper.240.json
+UPPER_D_CFG=config.upper.D.json
+LOWER_60_CFG=config.lower.60.json
+
 build:
 	go build -o $(BINARY) .
 
-# Запустить бота в фоне
-run: build
-	nohup ./$(BINARY) > $(UPPER_LOG) 2>&1 &
-	echo "Бот запущен. PID: $$!"
+run-upper-60: build
+	nohup ./$(BINARY) -config $(UPPER_60_CFG) > /dev/null 2>&1 &
+	echo "Upper 1h бот запущен"
 
-# Запустить нижнего бота в фоне
-run-lower: build
-	nohup ./$(BINARY) -config config.lower.json > $(LOWER_LOG) 2>&1 &
-	echo "Lower бот запущен. PID: $$!"
+run-upper-240: build
+	nohup ./$(BINARY) -config $(UPPER_240_CFG) > /dev/null 2>&1 &
+	echo "Upper 4h бот запущен"
 
-# Остановить верхнего бота
-stop-upper:
-	pkill -f "^./$(BINARY)$$" || true
-	echo "Upper бот остановлен"
+run-upper-d: build
+	nohup ./$(BINARY) -config $(UPPER_D_CFG) > /dev/null 2>&1 &
+	echo "Upper 1D бот запущен"
 
-# Остановить нижнего бота
-stop-lower:
-	pkill -f "^./$(BINARY) -config config.lower.json$$" || true
-	echo "Lower бот остановлен"
+run-lower-60: build
+	nohup ./$(BINARY) -config $(LOWER_60_CFG) > /dev/null 2>&1 &
+	echo "Lower 1h бот запущен"
 
-# Остановить оба бота
+run-all: build
+	nohup ./$(BINARY) -config $(UPPER_60_CFG) > /dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_240_CFG) > /dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_D_CFG) > /dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(LOWER_60_CFG) > /dev/null 2>&1 &
+	echo "Все 4 бота запущены"
+
+run: run-upper-60
+run-lower: run-lower-60
+
+stop-upper-60:
+	pkill -f "^./$(BINARY) -config $(UPPER_60_CFG)$$" || true
+	echo "Upper 1h бот остановлен"
+
+stop-upper-240:
+	pkill -f "^./$(BINARY) -config $(UPPER_240_CFG)$$" || true
+	echo "Upper 4h бот остановлен"
+
+stop-upper-d:
+	pkill -f "^./$(BINARY) -config $(UPPER_D_CFG)$$" || true
+	echo "Upper 1D бот остановлен"
+
+stop-lower-60:
+	pkill -f "^./$(BINARY) -config $(LOWER_60_CFG)$$" || true
+	echo "Lower 1h бот остановлен"
+
+stop-upper: stop-upper-60
+stop-lower: stop-lower-60
+
 stop:
-	$(MAKE) stop-upper
-	$(MAKE) stop-lower
-	echo "Все боты остановлены"
+	$(MAKE) stop-upper-60
+	$(MAKE) stop-upper-240
+	$(MAKE) stop-upper-d
+	$(MAKE) stop-lower-60
+	echo "Все 4 бота остановлены"
 
-# Перезапустить бота
-restart: stop run
+restart: stop run-all
 
-# Посмотреть логи
-logs:
-	tail -f $(UPPER_LOG)
+logs-upper-60:
+	@echo "Логи отключены"
 
-# Посмотреть логи lower бота
-logs-lower:
-	tail -f $(LOWER_LOG)
+logs-upper-240:
+	@echo "Логи отключены"
 
-# Проверить статус
+logs-upper-d:
+	@echo "Логи отключены"
+
+logs-lower-60:
+	@echo "Логи отключены"
+
+logs: logs-upper-60
+logs-lower: logs-lower-60
+
 status:
 	pgrep -f $(BINARY) && echo "✅ Бот работает" || echo "❌ Бот не работает"
 
-# Очистить файлы
 clean:
-	rm -f $(BINARY) $(UPPER_LOG) $(LOWER_LOG)
+	rm -f $(BINARY) bot.upper.60.log bot.upper.240.log bot.upper.D.log bot.lower.60.log bot.log bot.lower.log

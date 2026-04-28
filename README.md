@@ -1,6 +1,6 @@
 # Crypto RSI/Stoch RSI Bot
 
-Telegram-бот по криптопарам Bybit: считает **RSI** и **Stochastic RSI** и отправляет уведомления либо по **верхней зоне**, либо по **нижней зоне**. Режим выбирается в конфиге, поэтому из одного репозитория можно запускать два отдельных бота с разными токенами и разными файлами подписчиков. Пользователь может менять только таймфрейм свечей, а формула индикаторов зафиксирована на канонических значениях Bybit/TradingView.
+Telegram-бот по криптопарам Bybit: считает **RSI** и **Stochastic RSI** и отправляет уведомления либо по **верхней зоне**, либо по **нижней зоне**. Режим выбирается в конфиге, поэтому из одного репозитория можно запускать несколько отдельных ботов с разными токенами, таймфреймами и файлами подписчиков. Формула индикаторов зафиксирована на канонических значениях Bybit/TradingView.
 
 ## Как это устроено
 
@@ -27,23 +27,21 @@ go build -o crypto-bot .
 
 При первом запуске без `config.json` создаётся файл с полями по умолчанию. Нужно заполнить `telegram_token`.
 
-## Запуск двух ботов
+## Запуск нескольких ботов
 
-Пример для двух отдельных Telegram-ботов:
+Пример для четырех отдельных Telegram-ботов:
 
 ```bash
-cp config.example.json config.upper.json
-cp config.lower.example.json config.lower.json
-
-# Вставить разные telegram_token
-./crypto-bot -config config.upper.json
-./crypto-bot -config config.lower.json
+./crypto-bot -config config.upper.60.json
+./crypto-bot -config config.upper.240.json
+./crypto-bot -config config.upper.D.json
+./crypto-bot -config config.lower.60.json
 ```
 
 Рекомендуется:
 
-- для `upper` использовать `subscribers.json`
-- для `lower` использовать `subscribers.lower.json`
+- для каждого бота использовать отдельный `subscribers_file`
+- для продовых ботов включать `lock_timeframe: true`
 
 ## Конфигурация
 
@@ -55,10 +53,11 @@ cp config.lower.example.json config.lower.json
 | `subscribers_file`       | Файл подписчиков                  | `subscribers.json` |
 | `signal_mode`            | Режим сигнала: `upper` или `lower` | `upper` |
 | `timeframe`              | Таймфрейм свечей Bybit (`5`, `15`, `60`, `240`, `D`) | `60` |
+| `lock_timeframe`         | Запретить смену таймфрейма через Telegram | `false` |
 | `max_signals_per_cycle`  | Макс. уведомлений за проход       | 10           |
 | `candle_limit`           | Число часовых свечей              | 100          |
 
-В боте через **/settings** меняется только таймфрейм. Все индикаторные параметры зафиксированы.
+Если `lock_timeframe: true`, таймфрейм фиксируется в конфиге, а смена через **/settings** отключается. Все индикаторные параметры зафиксированы.
 
 ## Команды бота
 
