@@ -5,7 +5,7 @@ BINARY=rsi-bot
 UPPER_60_CFG=config.upper.60.json
 UPPER_240_CFG=config.upper.240.json
 UPPER_D_CFG=config.upper.D.json
-LOWER_60_CFG=config.lower.60.json
+LOWER_240_CFG=config.lower.240.json
 
 build:
 	go build -o $(BINARY) .
@@ -22,19 +22,19 @@ run-upper-d: build
 	nohup ./$(BINARY) -config $(UPPER_D_CFG) > /dev/null 2>&1 &
 	echo "Upper 1D бот запущен"
 
-run-lower-60: build
-	nohup ./$(BINARY) -config $(LOWER_60_CFG) > /dev/null 2>&1 &
-	echo "Lower 1h бот запущен"
+run-lower-240: build
+	nohup ./$(BINARY) -config $(LOWER_240_CFG) > /dev/null 2>&1 &
+	echo "Lower 4h бот запущен"
 
 run-all: build
 	nohup ./$(BINARY) -config $(UPPER_60_CFG) > /dev/null 2>&1 &
 	nohup ./$(BINARY) -config $(UPPER_240_CFG) > /dev/null 2>&1 &
 	nohup ./$(BINARY) -config $(UPPER_D_CFG) > /dev/null 2>&1 &
-	nohup ./$(BINARY) -config $(LOWER_60_CFG) > /dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(LOWER_240_CFG) > /dev/null 2>&1 &
 	echo "Все 4 бота запущены"
 
 run: run-upper-60
-run-lower: run-lower-60
+run-lower: run-lower-240
 
 stop-upper-60:
 	pkill -f "^./$(BINARY) -config $(UPPER_60_CFG)$$" || true
@@ -48,18 +48,18 @@ stop-upper-d:
 	pkill -f "^./$(BINARY) -config $(UPPER_D_CFG)$$" || true
 	echo "Upper 1D бот остановлен"
 
-stop-lower-60:
-	pkill -f "^./$(BINARY) -config $(LOWER_60_CFG)$$" || true
-	echo "Lower 1h бот остановлен"
+stop-lower-240:
+	pkill -f "^./$(BINARY) -config $(LOWER_240_CFG)$$" || true
+	echo "Lower 4h бот остановлен"
 
 stop-upper: stop-upper-60
-stop-lower: stop-lower-60
+stop-lower: stop-lower-240
 
 stop:
 	$(MAKE) stop-upper-60
 	$(MAKE) stop-upper-240
 	$(MAKE) stop-upper-d
-	$(MAKE) stop-lower-60
+	$(MAKE) stop-lower-240
 	echo "Все 4 бота остановлены"
 
 restart: stop run-all
@@ -73,11 +73,11 @@ logs-upper-240:
 logs-upper-d:
 	@echo "Логи отключены"
 
-logs-lower-60:
+logs-lower-240:
 	@echo "Логи отключены"
 
 logs: logs-upper-60
-logs-lower: logs-lower-60
+logs-lower: logs-lower-240
 
 status:
 	pgrep -f $(BINARY) && echo "✅ Бот работает" || echo "❌ Бот не работает"
