@@ -177,11 +177,11 @@ func (h *Handler) handleCallback(query *tgbotapi.CallbackQuery) {
 			break
 		}
 		h.sendSubmenu(chatID, "Таймфрейм свечей:", [][]string{
-			{"5m", "timeframe_5"}, {"15m", "timeframe_15"}, {"1h", "timeframe_60"}, {"4h", "timeframe_240"}, {"1D", "timeframe_D"},
+			{"1m", "timeframe_1"}, {"5m", "timeframe_5"}, {"15m", "timeframe_15"}, {"1h", "timeframe_60"}, {"4h", "timeframe_240"}, {"1D", "timeframe_D"},
 		}, "settings")
 		h.bot.Request(tgbotapi.NewCallback(query.ID, ""))
 		return
-	case "timeframe_5", "timeframe_15", "timeframe_60", "timeframe_240", "timeframe_D":
+	case "timeframe_1", "timeframe_5", "timeframe_15", "timeframe_60", "timeframe_240", "timeframe_D":
 		if config.Get().LockTimeframe {
 			responseText = "⚠️ Таймфрейм зафиксирован в конфиге бота."
 			showKeyboard = true
@@ -264,6 +264,8 @@ func (h *Handler) botDescription() string {
 
 func humanTimeframe(value string) string {
 	switch value {
+	case "1":
+		return "1m"
 	case "5":
 		return "5m"
 	case "15":

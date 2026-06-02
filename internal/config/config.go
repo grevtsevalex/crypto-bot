@@ -49,7 +49,7 @@ func normalize(c *Config) {
 		}
 	}
 	switch c.Timeframe {
-	case "5", "15", "60", "240", "D":
+	case "1", "5", "15", "60", "240", "D":
 	default:
 		c.Timeframe = "60"
 	}
