@@ -3,7 +3,7 @@
   "subscribers_file": "subscribers.upper.15.json",
   "signal_mode": "upper",
   "timeframe": "15",
-  "lock_timeframe": false,
+  "lock_timeframe": true,
   "max_signals_per_cycle": 20,
   "candle_limit": 100
 }
