@@ -37,10 +37,17 @@ func New(
 func (h *Handler) HandleUpdates() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
+	u.AllowedUpdates = []string{"message", "callback_query"}
+	log.Printf("Запущена обработка Telegram updates для %s", h.bot.Self.UserName)
 	updates := h.bot.GetUpdatesChan(u)
 
 	for update := range updates {
 		if update.CallbackQuery != nil {
+			if update.CallbackQuery.Message == nil {
+				log.Printf("Callback без сообщения: %s", update.CallbackQuery.Data)
+				continue
+			}
+			log.Printf("Callback от %d: %s", update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
 			h.handleCallback(update.CallbackQuery)
 			continue
 		}
@@ -49,6 +56,7 @@ func (h *Handler) HandleUpdates() {
 		}
 		chatID := update.Message.Chat.ID
 		if update.Message.IsCommand() {
+			log.Printf("Команда от %d: /%s", chatID, update.Message.Command())
 			switch update.Message.Command() {
 			case "start":
 				h.showMainMenu(chatID)
@@ -103,7 +111,7 @@ func (h *Handler) showSettingsOverview(chatID int64) {
 		"⚙️ *Настройки*\n\n"+
 			"Таймфрейм: *%s*\n"+
 			"Выберите, что изменить:",
-		cfg.Timeframe,
+		humanTimeframe(cfg.Timeframe),
 	)
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
