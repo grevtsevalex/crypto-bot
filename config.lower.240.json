@@ -1,8 +1,8 @@
 {
   "telegram_token": "8668221753:AAEGgwKhkZyi88q5vVlJg6hkBe1uCiatnT8",
   "subscribers_file": "subscribers.lower.240.json",
-  "signal_mode": "lower",
-  "timeframe": "240",
+  "signal_mode": "upper",
+  "timeframe": "5",
   "lock_timeframe": true,
   "max_signals_per_cycle": 20,
   "candle_limit": 100
