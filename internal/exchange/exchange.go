@@ -16,6 +16,7 @@ import (
 const (
 	bybitInstrumentsPath = "/v5/market/instruments-info?category=linear"
 	bybitKlinePathFmt    = "/v5/market/kline?category=linear&symbol=%s&interval=%s&limit=%d"
+	bybitTickersPath     = "/v5/market/tickers?category=linear"
 )
 
 var bybitMainnetHosts = []string{
@@ -88,6 +89,51 @@ func Candles(symbol, timeframe string, limit int) ([]float64, error) {
 	}
 
 	return closes, nil
+}
+
+// TickerInfo хранит данные о тикере для фильтрации.
+type TickerInfo struct {
+	Symbol  string
+	Turnover24h float64
+}
+
+// Tickers возвращает список тикеров линейных деривативов с данными об обороте за 24 часа.
+func Tickers() ([]TickerInfo, error) {
+	body, err := bybitGETAny(bybitTickersPath, 15*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	var data struct {
+		RetCode int    `json:"retCode"`
+		RetMsg  string `json:"retMsg"`
+		Result  struct {
+			List []struct {
+				Symbol     string `json:"symbol"`
+				Turnover24h string `json:"turnover24h"`
+			} `json:"list"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа Bybit (tickers): %w", err)
+	}
+	if data.RetCode != 0 {
+		return nil, fmt.Errorf("bybit tickers retCode=%d retMsg=%s", data.RetCode, data.RetMsg)
+	}
+
+	var result []TickerInfo
+	for _, item := range data.Result.List {
+		var turnover float64
+		if turnover, err = strconv.ParseFloat(item.Turnover24h, 64); err != nil {
+			continue
+		}
+		result = append(result, TickerInfo{
+			Symbol:     item.Symbol,
+			Turnover24h: turnover,
+		})
+	}
+	return result, nil
 }
 
 // bybitGETAny пробует выполнить запрос к нескольким официальным mainnet-доменам Bybit.

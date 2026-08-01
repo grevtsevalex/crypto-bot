@@ -3,5 +3,6 @@
   "subscribers_file": "subscribers.json",
   "timeframe": "60",
   "max_signals_per_cycle": 10,
-  "candle_limit": 100
+  "candle_limit": 100,
+  "min_turnover": 1000000
 }

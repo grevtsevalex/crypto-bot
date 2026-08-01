@@ -131,11 +131,20 @@ func main() {
 	for {
 		log.Printf("Запуск анализа рынка (%s, mode=%s)...", config.Get().Timeframe, config.Get().SignalMode)
 
-		symbols, err := exchange.DerivativePairs()
+		tickers, err := exchange.Tickers()
 		if err != nil {
-			log.Printf("Ошибка получения пар: %v", err)
+			log.Printf("Ошибка получения тикеров: %v", err)
 			time.Sleep(1 * time.Minute)
 			continue
+		}
+
+		minTurnover := config.Get().MinTurnover
+		symbols := make([]string, 0, len(tickers))
+		for _, t := range tickers {
+			if minTurnover > 0 && t.Turnover24h < minTurnover {
+				continue
+			}
+			symbols = append(symbols, t.Symbol)
 		}
 
 		loopCfg := config.Get()

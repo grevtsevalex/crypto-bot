@@ -16,6 +16,7 @@ type Config struct {
 	LockTimeframe      bool   `json:"lock_timeframe"`
 	MaxSignalsPerCycle int    `json:"max_signals_per_cycle"` // макс. уведомлений за один проход по парам
 	CandleLimit        int    `json:"candle_limit"`          // число часовых свечей для расчёта
+	MinTurnover        float64 `json:"min_turnover"`         // минимальный оборот за 24ч для фильтрации пар
 }
 
 var (
