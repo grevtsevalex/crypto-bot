@@ -60,6 +60,9 @@ func normalize(c *Config) {
 	if c.CandleLimit < 50 || c.CandleLimit > 500 {
 		c.CandleLimit = 100
 	}
+	if c.MinTurnover <= 0 {
+		c.MinTurnover = 1000000
+	}
 }
 
 // Load загружает конфиг из файла; при отсутствии создаёт с дефолтами.
