@@ -1,0 +1,70 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "telegram-socks",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": false
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "block",
+      "protocol": "blackhole"
+    },
+    {
+      "tag": "to-ru",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "REPLACE_WITH_VLESS_SERVER",
+            "port": 443,
+            "users": [
+              {
+                "id": "REPLACE_WITH_VLESS_UUID",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "reality",
+        "realitySettings": {
+          "fingerprint": "chrome",
+          "serverName": "REPLACE_WITH_REALITY_SNI",
+          "password": "REPLACE_WITH_REALITY_PUBLIC_KEY",
+          "shortId": "REPLACE_WITH_REALITY_SHORT_ID"
+        },
+        "xhttpSettings": {
+          "path": "/REPLACE_WITH_XHTTP_PATH",
+          "mode": "auto"
+        }
+      }
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "telegram-socks"
+        ],
+        "domain": [
+          "full:api.telegram.org"
+        ],
+        "outboundTag": "to-ru"
+      }
+    ]
+  }
+}

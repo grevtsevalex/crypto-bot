@@ -43,6 +43,26 @@ go build -o crypto-bot .
 - для каждого бота использовать отдельный `subscribers_file`
 - оставлять `lock_timeframe: false`, если пользователи должны менять таймфрейм через Telegram
 
+### Запуск через Xray
+
+На Linux-сервере с установленным экземпляром `xray@crypto-bot.service` выполните из каталога проекта:
+
+```bash
+make run-all-with-proxy
+```
+
+Команда собирает бинарник, запускает Xray и проверяет доступ к Telegram через SOCKS5 на `127.0.0.1:10808`. После успешной проверки она перезапускает все шесть ботов с этим прокси. Запросы к Bybit идут напрямую. Если системный `PATH` не содержит Go, сборка также ищет его в `/usr/local/go/bin`.
+
+Xray читает рабочий конфиг из `/usr/local/etc/xray/crypto-bot.json`. Локальную резервную копию с данными доступа храните в `xray/crypto-bot.json`. Git игнорирует этот файл. Для восстановления из резервной копии на сервере с установленным Xray:
+
+```bash
+sudo install -o root -g xray -m 0640 xray/crypto-bot.json /usr/local/etc/xray/crypto-bot.json &&
+sudo -u xray /usr/local/bin/xray run -test -config /usr/local/etc/xray/crypto-bot.json &&
+sudo systemctl enable --now xray@crypto-bot.service
+```
+
+Если рабочей копии нет, заполните параметры подключения в [шаблоне Xray](xray/crypto-bot.example.json) данными из профиля VLESS. Поле `password` в секции REALITY соответствует параметру `pbk` ссылки. После замены конфига уже запущенный Xray нужно перезапустить командой `sudo systemctl restart xray@crypto-bot.service`.
+
 ## Конфигурация
 
 Поля в `config.json` (дефолты как в `config.example.json`):
