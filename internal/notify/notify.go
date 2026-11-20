@@ -3,7 +3,6 @@ package notify
 
 import (
 	"fmt"
-	"log"
 	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -65,8 +64,6 @@ func (n *Notifier) broadcast(message, parseMode string) {
 		if parseMode != "" {
 			msg.ParseMode = parseMode
 		}
-		if _, err := n.bot.Send(msg); err != nil {
-			log.Printf("Не удалось отправить сообщение %d: %v", chatID, err)
-		}
+		n.bot.Send(msg)
 	}
 }

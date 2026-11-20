@@ -3,7 +3,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"grevtsevalex/crypto-bot/internal/config"
@@ -38,16 +37,13 @@ func (h *Handler) HandleUpdates() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
 	u.AllowedUpdates = []string{"message", "callback_query"}
-	log.Printf("Запущена обработка Telegram updates для %s", h.bot.Self.UserName)
 	updates := h.bot.GetUpdatesChan(u)
 
 	for update := range updates {
 		if update.CallbackQuery != nil {
 			if update.CallbackQuery.Message == nil {
-				log.Printf("Callback без сообщения: %s", update.CallbackQuery.Data)
 				continue
 			}
-			log.Printf("Callback от %d: %s", update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
 			h.handleCallback(update.CallbackQuery)
 			continue
 		}
@@ -56,7 +52,6 @@ func (h *Handler) HandleUpdates() {
 		}
 		chatID := update.Message.Chat.ID
 		if update.Message.IsCommand() {
-			log.Printf("Команда от %d: /%s", chatID, update.Message.Command())
 			switch update.Message.Command() {
 			case "start":
 				h.showMainMenu(chatID)
@@ -94,9 +89,7 @@ func (h *Handler) showMainMenu(chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🤖 *%s*\n\n%s\nВыберите действие:", h.botTitle(), h.botDescription()))
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = kb
-	if _, err := h.bot.Send(msg); err != nil {
-		log.Printf("Ошибка отправки меню %d: %v", chatID, err)
-	}
+	h.bot.Send(msg)
 }
 
 func (h *Handler) showSettingsOverview(chatID int64) {

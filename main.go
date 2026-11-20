@@ -4,8 +4,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
+	"io"
 	"log"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -96,7 +99,6 @@ func unsubscribe(chatID int64) {
 		if err := saveSubscribers(); err != nil {
 			log.Printf("Ошибка сохранения подписчиков: %v", err)
 		}
-		log.Printf("Пользователь отписался: %d", chatID)
 	}
 }
 
@@ -114,13 +116,17 @@ func main() {
 
 	if err := loadSubscribers(); err != nil {
 		log.Printf("Ошибка загрузки подписчиков: %v", err)
-	} else {
-		log.Printf("Загружено %d подписчиков", len(subscribers))
 	}
 
+	_ = tgbotapi.SetLogger(log.New(io.Discard, "", 0))
 	botApi, err := tgbotapi.NewBotAPI(cfg.TelegramToken)
 	if err != nil {
-		log.Fatal("Ошибка инициализации бота:", err)
+		var requestErr *url.Error
+		if errors.As(err, &requestErr) {
+			// URL запроса содержит токен бота.
+			err = requestErr.Err
+		}
+		log.Fatalf("Ошибка инициализации Telegram: %v", err)
 	}
 	bot = botApi
 	notifier = notify.New(botApi, cfg.SignalMode, getSubscribers)
@@ -129,11 +135,8 @@ func main() {
 	go h.HandleUpdates()
 
 	for {
-		log.Printf("Запуск анализа рынка (%s, mode=%s)...", config.Get().Timeframe, config.Get().SignalMode)
-
 		tickers, err := exchange.Tickers()
 		if err != nil {
-			log.Printf("Ошибка получения тикеров: %v", err)
 			time.Sleep(1 * time.Minute)
 			continue
 		}
@@ -163,7 +166,6 @@ func main() {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		log.Println("Анализ завершён. Следующий запуск через 1 минуту...")
 		time.Sleep(1 * time.Minute)
 	}
 }
@@ -179,15 +181,10 @@ func processSymbol(symbol string) bool {
 	}
 	closes, err := exchange.Candles(symbol, cfg.Timeframe, limit)
 	if err != nil {
-		log.Printf("Ошибка свечей %s: %v", symbol, err)
 		return false
 	}
 
 	values := rsi.CalcStochRSI(closes, canonicalRSIPeriod, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD)
-	log.Printf(
-		"%s RSI(%s,%d)=%.2f Stoch RSI(%d,%d,%d) raw=%.2f K=%.2f D=%.2f",
-		symbol, cfg.Timeframe, canonicalRSIPeriod, values.RSI, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD, values.RawK, values.K, values.D,
-	)
 
 	if shouldSignal(cfg.SignalMode, values.RSI, values.RawK, values.K) {
 		notifier.SendSignal(symbol, cfg.Timeframe, values.RSI, values.K, canonicalRSIPeriod, canonicalStochPeriod, canonicalSmoothK, canonicalSmoothD)

@@ -13,36 +13,36 @@ build:
 	go build -o $(BINARY) .
 
 run-upper-60: build
-	nohup ./$(BINARY) -config $(UPPER_60_CFG) >> bot.upper.60.log 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_60_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Upper 1h бот запущен"
 
 run-upper-15: build
-	nohup ./$(BINARY) -config $(UPPER_15_CFG) >> bot.upper.15.log 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_15_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Upper 15m бот запущен"
 
 run-upper-240: build
-	nohup ./$(BINARY) -config $(UPPER_240_CFG) >> bot.upper.240.log 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_240_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Upper 4h бот запущен"
 
 run-upper-d: build
-	nohup ./$(BINARY) -config $(UPPER_D_CFG) >> bot.upper.D.log 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_D_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Upper 1D бот запущен"
 
 run-lower-240: build
-	nohup ./$(BINARY) -config $(LOWER_240_CFG) >> bot.lower.240.log 2>&1 &
+	nohup ./$(BINARY) -config $(LOWER_240_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Lower 4h бот запущен"
 
 run-lower-d: build
-	nohup ./$(BINARY) -config $(LOWER_D_CFG) >> bot.lower.D.log 2>&1 &
+	nohup ./$(BINARY) -config $(LOWER_D_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Lower 1D бот запущен"
 
 run-all: build
-	nohup ./$(BINARY) -config $(UPPER_60_CFG) >> bot.upper.60.log 2>&1 &
-	nohup ./$(BINARY) -config $(UPPER_15_CFG) >> bot.upper.15.log 2>&1 &
-	nohup ./$(BINARY) -config $(UPPER_240_CFG) >> bot.upper.240.log 2>&1 &
-	nohup ./$(BINARY) -config $(UPPER_D_CFG) >> bot.upper.D.log 2>&1 &
-	nohup ./$(BINARY) -config $(LOWER_240_CFG) >> bot.lower.240.log 2>&1 &
-	nohup ./$(BINARY) -config $(LOWER_D_CFG) >> bot.lower.D.log 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_60_CFG) </dev/null >/dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_15_CFG) </dev/null >/dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_240_CFG) </dev/null >/dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(UPPER_D_CFG) </dev/null >/dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(LOWER_240_CFG) </dev/null >/dev/null 2>&1 &
+	nohup ./$(BINARY) -config $(LOWER_D_CFG) </dev/null >/dev/null 2>&1 &
 	echo "Все 6 ботов запущены"
 
 run: run-upper-60
@@ -85,27 +85,6 @@ stop:
 	echo "Все 6 ботов остановлены"
 
 restart: stop run-all
-
-logs-upper-60:
-	tail -f bot.upper.60.log
-
-logs-upper-15:
-	tail -f bot.upper.15.log
-
-logs-upper-240:
-	tail -f bot.upper.240.log
-
-logs-upper-d:
-	tail -f bot.upper.D.log
-
-logs-lower-240:
-	tail -f bot.lower.240.log
-
-logs-lower-d:
-	tail -f bot.lower.D.log
-
-logs: logs-upper-60
-logs-lower: logs-lower-240
 
 status:
 	pgrep -f $(BINARY) && echo "✅ Бот работает" || echo "❌ Бот не работает"
